@@ -20,23 +20,83 @@ import type {
   InstallerDependencies,
   PackageManager,
   ProjectInfo,
+  TicketingMode,
 } from "./types.js";
 
 const GENERATED_MANIFEST = ".ticketing/manifest.json";
 const ENV_EXAMPLE = ".env.example";
 const SHADCN_VERSION = "4.16.1";
-const REQUIRED_ENVIRONMENT: ReadonlyArray<[string, string]> = [
-  ["TICKETING_API_URL", "https://support.example.com/api/v1"],
-  ["TICKETING_CLIENT_ID", "replace-with-your-client-id"],
-  ["TICKETING_CLIENT_SECRET", "replace-with-at-least-32-random-bytes"],
+type EnvironmentExample = {
+  key: string;
+  value: string;
+  optional?: boolean;
+};
+
+const COMMON_ENVIRONMENT: readonly EnvironmentExample[] = [
+  { key: "TICKETING_CLIENT_ID", value: "replace-with-your-client-id" },
+  {
+    key: "TICKETING_CLIENT_SECRET",
+    value: "replace-with-at-least-32-random-bytes",
+  },
 ];
+const MODE_ENVIRONMENT: Record<TicketingMode, readonly EnvironmentExample[]> = {
+  connected: [
+    { key: "TICKETING_API_URL", value: "https://support.example.com/api/v1" },
+  ],
+  "self-hosted": [
+    {
+      key: "DATABASE_TICKETING_URL",
+      value: "postgresql://ticketing:ticketing@localhost:5432/ticketing",
+    },
+    {
+      key: "REDIS_TICKETING_URL",
+      value: "redis://localhost:6379",
+      optional: true,
+    },
+    { key: "AWS_ACCESS_KEY_ID", value: "replace-with-aws-access-key-id" },
+    {
+      key: "AWS_SECRET_ACCESS_KEY",
+      value: "replace-with-aws-secret-access-key",
+    },
+    { key: "AWS_REGION", value: "ap-southeast-1" },
+    { key: "S3_BUCKET_NAME", value: "private-ticketing-attachments" },
+    {
+      key: "STORAGE_ENDPOINT",
+      value: "https://s3-compatible.example.com",
+      optional: true,
+    },
+    { key: "STORAGE_REGION", value: "auto", optional: true },
+    {
+      key: "STORAGE_BUCKET",
+      value: "private-ticketing-attachments",
+      optional: true,
+    },
+    {
+      key: "STORAGE_ACCESS_KEY_ID",
+      value: "replace-with-storage-access-key",
+      optional: true,
+    },
+    {
+      key: "STORAGE_SECRET_ACCESS_KEY",
+      value: "replace-with-storage-secret-key",
+      optional: true,
+    },
+    { key: "STORAGE_FORCE_PATH_STYLE", value: "false", optional: true },
+  ],
+};
 
 type GeneratedManifest = {
-  schemaVersion: 1;
+  schemaVersion: 2;
+  mode: TicketingMode;
   package: {
     name: "@quanby/ticketing";
     version: string;
   };
+  files: Record<string, { sha256: string }>;
+};
+
+type PreviousGeneratedManifest = {
+  mode: TicketingMode;
   files: Record<string, { sha256: string }>;
 };
 
@@ -51,13 +111,32 @@ async function readOptional(filePath: string): Promise<string | undefined> {
   }
 }
 
-function validatePreviousManifest(value: unknown, manifestPath: string): GeneratedManifest {
+function validatePreviousManifest(
+  value: unknown,
+  manifestPath: string,
+): PreviousGeneratedManifest {
   if (!value || typeof value !== "object") {
     throw new CliError(`Invalid generated-file manifest: ${manifestPath}`);
   }
-  const candidate = value as Partial<GeneratedManifest>;
-  if (candidate.schemaVersion !== 1 || !candidate.files || typeof candidate.files !== "object") {
+  const candidate = value as {
+    schemaVersion?: unknown;
+    mode?: unknown;
+    files?: unknown;
+  };
+  if (
+    (candidate.schemaVersion !== 1 && candidate.schemaVersion !== 2) ||
+    !candidate.files ||
+    typeof candidate.files !== "object" ||
+    Array.isArray(candidate.files)
+  ) {
     throw new CliError(`Invalid generated-file manifest: ${manifestPath}`);
+  }
+  if (
+    candidate.schemaVersion === 2 &&
+    candidate.mode !== "connected" &&
+    candidate.mode !== "self-hosted"
+  ) {
+    throw new CliError(`Invalid generated-file mode in ${manifestPath}`);
   }
   for (const [file, entry] of Object.entries(candidate.files)) {
     if (
@@ -69,10 +148,18 @@ function validatePreviousManifest(value: unknown, manifestPath: string): Generat
       throw new CliError(`Invalid generated-file entry for ${file} in ${manifestPath}`);
     }
   }
-  return candidate as GeneratedManifest;
+  return {
+    mode:
+      candidate.schemaVersion === 2
+        ? (candidate.mode as TicketingMode)
+        : "connected",
+    files: candidate.files as PreviousGeneratedManifest["files"],
+  };
 }
 
-async function readPreviousManifest(manifestPath: string): Promise<GeneratedManifest | undefined> {
+async function readPreviousManifest(
+  manifestPath: string,
+): Promise<PreviousGeneratedManifest | undefined> {
   const raw = await readOptional(manifestPath);
   if (raw === undefined) {
     return undefined;
@@ -99,11 +186,21 @@ async function atomicWrite(filePath: string, content: string): Promise<void> {
   }
 }
 
-function mergeEnvironmentExample(existing: string | undefined): string {
+function environmentForMode(mode: TicketingMode): readonly EnvironmentExample[] {
+  return [...COMMON_ENVIRONMENT, ...MODE_ENVIRONMENT[mode]];
+}
+
+function mergeEnvironmentExample(
+  existing: string | undefined,
+  mode: TicketingMode,
+): string {
   let result = existing ?? "";
-  const missing = REQUIRED_ENVIRONMENT.filter(([key]) => {
+  const missing = environmentForMode(mode).filter(({ key, optional }) => {
     const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    return !new RegExp(`^\\s*(?:export\\s+)?${escapedKey}\\s*=`, "m").test(result);
+    return !new RegExp(
+      `^\\s*${optional ? "(?:#\\s*)?" : ""}(?:export\\s+)?${escapedKey}\\s*=`,
+      "m",
+    ).test(result);
   });
   if (missing.length === 0) {
     return result;
@@ -116,7 +213,9 @@ function mergeEnvironmentExample(existing: string | undefined): string {
     result += "\n";
   }
   result += "# @quanby/ticketing\n";
-  result += missing.map(([key, value]) => `${key}=${value}`).join("\n");
+  result += missing
+    .map(({ key, value, optional }) => `${optional ? "# " : ""}${key}=${value}`)
+    .join("\n");
   result += "\n";
   return result;
 }
@@ -147,16 +246,33 @@ function addDependenciesInvocation(
   packageManager: PackageManager,
   dependencies: string[],
   cwd: string,
+  exact: boolean,
 ): CommandInvocation {
   switch (packageManager) {
     case "npm":
-      return { command: "npm", args: ["install", ...dependencies], cwd };
+      return {
+        command: "npm",
+        args: ["install", ...(exact ? ["--save-exact"] : []), ...dependencies],
+        cwd,
+      };
     case "pnpm":
-      return { command: "pnpm", args: ["add", ...dependencies], cwd };
+      return {
+        command: "pnpm",
+        args: ["add", ...(exact ? ["--save-exact"] : []), ...dependencies],
+        cwd,
+      };
     case "yarn":
-      return { command: "yarn", args: ["add", ...dependencies], cwd };
+      return {
+        command: "yarn",
+        args: ["add", ...(exact ? ["--exact"] : []), ...dependencies],
+        cwd,
+      };
     case "bun":
-      return { command: "bun", args: ["add", ...dependencies], cwd };
+      return {
+        command: "bun",
+        args: ["add", ...(exact ? ["--exact"] : []), ...dependencies],
+        cwd,
+      };
   }
 }
 
@@ -278,6 +394,10 @@ async function missingDependencies(root: string, requested: string[]): Promise<s
       );
     }
     if (!semver.intersects(declaredRange, requiredRange)) {
+      if (name === "@quanby/ticketing" && !declared.startsWith("catalog:")) {
+        missing.push(specifier);
+        continue;
+      }
       throw new CliError(
         `${name} ${describedDeclared} is incompatible with the generated portal (requires ${required}). ` +
           `Upgrade it deliberately, verify your application, and run the installer again.`,
@@ -324,15 +444,34 @@ export async function buildInstallCommands(
     );
   }
   const missing = await missingDependencies(project.root, dependencies);
-  if (missing.length > 0) {
-    commands.push(addDependenciesInvocation(project.packageManager, missing, project.root));
+  const packageRuntime = missing.filter(
+    (specifier) => dependencyName(specifier) === "@quanby/ticketing",
+  );
+  const editableSourceDependencies = missing.filter(
+    (specifier) => dependencyName(specifier) !== "@quanby/ticketing",
+  );
+  if (editableSourceDependencies.length > 0) {
+    commands.push(addDependenciesInvocation(
+      project.packageManager,
+      editableSourceDependencies,
+      project.root,
+      false,
+    ));
+  }
+  if (packageRuntime.length > 0) {
+    commands.push(addDependenciesInvocation(
+      project.packageManager,
+      packageRuntime,
+      project.root,
+      true,
+    ));
   }
   return commands;
 }
 
 async function decideFileActions(
   files: RenderedTemplate[],
-  previous: GeneratedManifest | undefined,
+  previous: PreviousGeneratedManifest | undefined,
   options: InitOptions,
   confirm: InstallerDependencies["confirm"],
 ): Promise<FileAction[]> {
@@ -376,25 +515,84 @@ async function decideFileActions(
   return actions;
 }
 
+async function decideStaleModeActions(
+  root: string,
+  files: RenderedTemplate[],
+  previous: PreviousGeneratedManifest,
+  options: InitOptions,
+  confirm: InstallerDependencies["confirm"],
+): Promise<{ actions: FileAction[]; stalePaths: string[] }> {
+  const selected = new Set(
+    files.map((file) => normaliseManifestPath(file.relativeTarget)),
+  );
+  const stalePaths = Object.keys(previous.files).filter(
+    (file) => !selected.has(normaliseManifestPath(file)),
+  );
+  const actions: FileAction[] = [];
+  const modifiedRemovals = new Set<string>();
+
+  for (const stalePath of stalePaths) {
+    const targetPath = await resolveSafeProjectPath(root, stalePath);
+    const current = await readOptional(targetPath);
+    if (current === undefined) continue;
+
+    if (sha256(current) === previous.files[stalePath]?.sha256) {
+      actions.push({ kind: "remove", path: normaliseManifestPath(stalePath) });
+    } else if (options.overwrite) {
+      const normalized = normaliseManifestPath(stalePath);
+      actions.push({ kind: "remove", path: normalized });
+      modifiedRemovals.add(normalized);
+    } else {
+      actions.push({ kind: "conflict", path: normaliseManifestPath(stalePath) });
+    }
+  }
+
+  if (modifiedRemovals.size > 0 && !options.yes && !options.dryRun) {
+    const accepted = await confirm(
+      `Remove ${modifiedRemovals.size} modified generated ${modifiedRemovals.size === 1 ? "file" : "files"} that are not used by the selected mode?`,
+    );
+    if (!accepted) {
+      for (const action of actions) {
+        if (action.kind === "remove" && modifiedRemovals.has(action.path)) {
+          action.kind = "conflict";
+        }
+      }
+    }
+  }
+
+  return { actions, stalePaths: stalePaths.map(normaliseManifestPath) };
+}
+
 function printSummary(
   dependencies: InstallerDependencies,
   options: InitOptions,
+  mode: TicketingMode,
   actions: FileAction[],
   commands: CommandInvocation[],
 ): void {
   const prefix = options.dryRun ? "Would" : "Will";
+  dependencies.logger.info(`Ticketing mode: ${mode}.`);
   const changed = actions.filter((action) =>
-    ["create", "update", "overwrite"].includes(action.kind),
+    ["create", "update", "overwrite", "remove"].includes(action.kind),
   );
   dependencies.logger.info(
-    `${prefix} generate ${changed.length} ${changed.length === 1 ? "file" : "files"}.`,
+    `${prefix} apply ${changed.length} generated-file ${changed.length === 1 ? "change" : "changes"}.`,
   );
+  if (options.dryRun) {
+    for (const action of changed) {
+      dependencies.logger.info(`  ${action.kind}: ${action.path}`);
+    }
+  }
   for (const action of actions.filter((entry) => entry.kind === "conflict")) {
     dependencies.logger.warn(`Preserved modified file: ${action.path}`);
   }
   if (commands.length > 0) {
-    if (options.skipInstall) {
-      dependencies.logger.info("Dependency/UI installation was skipped. Run these commands manually:");
+    if (options.skipInstall || options.dryRun) {
+      dependencies.logger.info(
+        options.skipInstall
+          ? "Dependency/UI installation was skipped. Run these commands manually:"
+          : "Would run these dependency/UI commands:",
+      );
       for (const command of commands) {
         dependencies.logger.info(
           `  ${command.command} ${command.args.map((argument) =>
@@ -420,25 +618,79 @@ export async function initProject(
       "No wildcard path alias maps to the source root; generated files will use relative imports.",
     );
   }
-  const templates = await loadTemplates(dependencies.templatesDirectory, project);
   const manifestPath = await resolveSafeProjectPath(project.root, GENERATED_MANIFEST);
   const previousManifest = await readPreviousManifest(manifestPath);
+  const mode = options.mode ?? previousManifest?.mode ?? "connected";
+  const templates = await loadTemplates(
+    dependencies.templatesDirectory,
+    project,
+    mode,
+  );
   const actions = await decideFileActions(
     templates.files,
     previousManifest,
     options,
     dependencies.confirm,
   );
+  let stalePaths: string[] = [];
+  if (previousManifest && previousManifest.mode !== mode) {
+    const stale = await decideStaleModeActions(
+      project.root,
+      templates.files,
+      previousManifest,
+      options,
+      dependencies.confirm,
+    );
+    actions.push(...stale.actions);
+    stalePaths = stale.stalePaths;
+  }
+  const modeSwitchConflicts = actions.filter((action) => {
+    if (action.kind !== "conflict") return false;
+    const template = templates.files.find(
+      (file) => file.relativeTarget === action.path,
+    );
+    const previousHash = previousManifest?.files[
+      normaliseManifestPath(action.path)
+    ]?.sha256;
+    return !template || !previousHash || template.hash !== previousHash;
+  });
+  if (
+    previousManifest &&
+    previousManifest.mode !== mode &&
+    modeSwitchConflicts.length > 0 &&
+    !options.dryRun
+  ) {
+    throw new CliError(
+      `Cannot switch ticketing mode from ${previousManifest.mode} to ${mode} while ` +
+        `${modeSwitchConflicts.length} generated ${modeSwitchConflicts.length === 1 ? "file has" : "files have"} local changes. ` +
+        "Review the files, then rerun with --overwrite to replace them.",
+    );
+  }
+
+  const requestedDependencies = [
+    ...(templates.manifest.dependencies ?? []),
+    ...(templates.manifest.modeDependencies?.[mode] ?? []),
+  ];
+  if (mode === "self-hosted") {
+    if (!semver.valid(dependencies.packageVersion)) {
+      throw new CliError(
+        `Cannot install the self-hosted runtime for invalid package version ${dependencies.packageVersion}.`,
+      );
+    }
+    requestedDependencies.push(
+      `@quanby/ticketing@${dependencies.packageVersion}`,
+    );
+  }
   const commands = await buildInstallCommands(
     project,
-    templates.manifest.dependencies ?? [],
+    [...new Set(requestedDependencies)],
     templates.manifest.shadcnComponents ?? [],
     options.yes,
   );
 
   const envPath = await resolveSafeProjectPath(project.root, ENV_EXAMPLE);
   const currentEnv = await readOptional(envPath);
-  const mergedEnv = mergeEnvironmentExample(currentEnv);
+  const mergedEnv = mergeEnvironmentExample(currentEnv, mode);
   actions.push({
     kind:
       currentEnv === mergedEnv
@@ -449,7 +701,7 @@ export async function initProject(
     path: ENV_EXAMPLE,
   });
 
-  printSummary(dependencies, options, actions, commands);
+  printSummary(dependencies, options, mode, actions, commands);
   if (!options.dryRun) {
     if (!options.skipInstall) {
       for (const command of commands) {
@@ -465,6 +717,14 @@ export async function initProject(
       }
     }
 
+    for (const action of actions) {
+      if (action.kind !== "remove") continue;
+      const targetPath = await resolveSafeProjectPath(project.root, action.path);
+      await unlink(targetPath).catch((error: NodeJS.ErrnoException) => {
+        if (error.code !== "ENOENT") throw error;
+      });
+    }
+
     for (const file of templates.files) {
       const action = actions.find((candidate) => candidate.path === file.relativeTarget);
       if (action && ["create", "update", "overwrite"].includes(action.kind)) {
@@ -478,6 +738,9 @@ export async function initProject(
     const manifestFiles: GeneratedManifest["files"] = {
       ...(previousManifest?.files ?? {}),
     };
+    for (const stalePath of stalePaths) {
+      delete manifestFiles[stalePath];
+    }
     for (const file of templates.files) {
       const action = actions.find((candidate) => candidate.path === file.relativeTarget);
       if (action?.kind !== "conflict") {
@@ -485,7 +748,8 @@ export async function initProject(
       }
     }
     const nextManifest: GeneratedManifest = {
-      schemaVersion: 1,
+      schemaVersion: 2,
+      mode,
       package: {
         name: "@quanby/ticketing",
         version: dependencies.packageVersion,
@@ -508,6 +772,7 @@ export async function initProject(
 
   return {
     project,
+    mode,
     actions,
     commands,
     conflicts,

@@ -36,6 +36,12 @@ if (!staticStats.isDirectory()) {
 }
 
 const forbiddenValues = new Set([
+  "AWS_ACCESS_KEY_ID",
+  "AWS_SECRET_ACCESS_KEY",
+  "DATABASE_TICKETING_URL",
+  "REDIS_TICKETING_URL",
+  "STORAGE_ACCESS_KEY_ID",
+  "STORAGE_SECRET_ACCESS_KEY",
   "TICKETING_CLIENT_SECRET",
   "NEXT_PUBLIC_TICKETING_CLIENT_SECRET",
 ]);
@@ -47,6 +53,17 @@ if (!configuredSecret) {
   );
 }
 forbiddenValues.add(configuredSecret);
+for (const name of [
+  "AWS_ACCESS_KEY_ID",
+  "AWS_SECRET_ACCESS_KEY",
+  "DATABASE_TICKETING_URL",
+  "REDIS_TICKETING_URL",
+  "STORAGE_ACCESS_KEY_ID",
+  "STORAGE_SECRET_ACCESS_KEY",
+]) {
+  const configured = process.env[name];
+  if (configured) forbiddenValues.add(configured);
+}
 
 const files = await collectFiles(staticRoot);
 if (files.length === 0) {

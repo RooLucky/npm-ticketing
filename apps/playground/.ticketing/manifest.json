@@ -1,8 +1,9 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
+  "mode": "connected",
   "package": {
     "name": "@quanby/ticketing",
-    "version": "0.1.0"
+    "version": "0.2.0"
   },
   "files": {
     "components/ticketing/Ticketing.tsx": {
@@ -18,7 +19,7 @@
       "sha256": "7c160d7f41e47420b52d281fc6345f553d9ac7743297625f48b12fa475d54534"
     },
     "lib/ticketing/schemas.ts": {
-      "sha256": "8735c6f71d9054cce13d684d684ac40e4d73d1bca441026e41f4a0fbf067ba28"
+      "sha256": "37e65c6c6d5888497d94d9173fd7a0842998b2ed1f2e4b607538f5c7fa4652a7"
     },
     "lib/ticketing/config.ts": {
       "sha256": "869b8f17cdfdc379da056cba5fcd8d7687408ad25136c923d8448ca06986cc89"
@@ -30,7 +31,7 @@
       "sha256": "bc6d157ff16a38cd9e7365106c238d75c9ec87a198cb2da0bba15a38ed0bf480"
     },
     "lib/ticketing/proxy.ts": {
-      "sha256": "edb485230eebe9136027ffc9ca7ee86eab54058c7ed51899af1fae921bbbc1a7"
+      "sha256": "3358ae075110658c4d848d5b634646b3ee99adcdadc3b48c769fae3f042c4163"
     },
     "app/api/ticketing/uploads/presign/route.ts": {
       "sha256": "37f07767e059efa2567b423dc3a0c33bade21593b0bdaf1d22ba2f20ba958fd6"
@@ -43,6 +44,9 @@
     },
     "app/api/ticketing/tickets/[ticketId]/replies/route.ts": {
       "sha256": "a7e033f012bcb3a3daa3e8880df9432fd017d57c4f8935e885c3ad559845cb2c"
+    },
+    "lib/ticketing/backend.ts": {
+      "sha256": "c1c7968e0bd6664eaeeb5dd27c5f33d9d5f8acb80d0eeab57efbfbb3d68fbf06"
     }
   }
 }

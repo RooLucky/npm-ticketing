@@ -1,0 +1,136 @@
+import "server-only";
+
+import {
+  TicketingDatabaseUrlSchema,
+  TicketingRedisUrlSchema,
+} from "@quanby/ticketing/self-hosted";
+import { z } from "zod";
+
+const TICKETING_SECRET_PLACEHOLDER = "replace-with-at-least-32-random-bytes";
+const AWS_ACCESS_KEY_PLACEHOLDER = "replace-with-aws-access-key-id";
+const AWS_SECRET_KEY_PLACEHOLDER = "replace-with-aws-secret-access-key";
+const STORAGE_ACCESS_KEY_PLACEHOLDER = "replace-with-storage-access-key";
+const STORAGE_SECRET_KEY_PLACEHOLDER = "replace-with-storage-secret-key";
+
+const NonEmptyString = z.string().trim().min(1);
+
+const ConfigSchema = z.object({
+  TICKETING_CLIENT_ID: z.string().trim().min(1).max(128),
+  TICKETING_CLIENT_SECRET: z
+    .string()
+    .refine(
+      (secret) => secret !== TICKETING_SECRET_PLACEHOLDER,
+      "TICKETING_CLIENT_SECRET must replace the documented placeholder",
+    )
+    .refine(
+      (secret) => new TextEncoder().encode(secret).byteLength >= 32,
+      "TICKETING_CLIENT_SECRET must contain at least 32 bytes",
+    ),
+  DATABASE_TICKETING_URL: TicketingDatabaseUrlSchema,
+  REDIS_TICKETING_URL: TicketingRedisUrlSchema.optional(),
+  AWS_ACCESS_KEY_ID: NonEmptyString.optional(),
+  AWS_SECRET_ACCESS_KEY: NonEmptyString.optional(),
+  AWS_REGION: NonEmptyString.max(128).optional(),
+  S3_BUCKET_NAME: NonEmptyString.max(255).optional(),
+  STORAGE_ENDPOINT: z.url().optional(),
+  STORAGE_REGION: NonEmptyString.max(128).optional(),
+  STORAGE_BUCKET: NonEmptyString.max(255).optional(),
+  STORAGE_ACCESS_KEY_ID: NonEmptyString.optional(),
+  STORAGE_SECRET_ACCESS_KEY: NonEmptyString.optional(),
+  STORAGE_FORCE_PATH_STYLE: z
+    .enum(["true", "false"])
+    .optional()
+    .default("false")
+    .transform((value) => value === "true"),
+});
+
+export type TicketingConfig = {
+  clientId: string;
+  clientSecret: Uint8Array;
+  databaseUrl: string;
+  redisUrl?: string;
+  storage: {
+    endpoint?: string;
+    region: string;
+    bucket: string;
+    accessKeyId: string;
+    secretAccessKey: string;
+    forcePathStyle: boolean;
+  };
+};
+
+let cachedConfig: TicketingConfig | undefined;
+
+function isLocalhost(url: URL) {
+  return url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "[::1]";
+}
+
+function requireStorageValue(
+  value: string | undefined,
+  names: string,
+  placeholders: readonly string[] = [],
+) {
+  if (!value || placeholders.includes(value)) {
+    throw new Error(`Invalid ticketing configuration: ${names}`);
+  }
+  return value;
+}
+
+export function getTicketingConfig(): TicketingConfig {
+  if (cachedConfig) return cachedConfig;
+
+  const parsed = ConfigSchema.safeParse(process.env);
+  if (!parsed.success) {
+    const invalid = parsed.error.issues
+      .map((issue) => `${issue.path.join(".") || "configuration"}: ${issue.message}`)
+      .join("; ");
+    throw new Error(`Invalid ticketing configuration: ${invalid}`);
+  }
+
+  const storageRegion = requireStorageValue(
+    parsed.data.STORAGE_REGION ?? parsed.data.AWS_REGION,
+    "AWS_REGION or STORAGE_REGION",
+  );
+  const storageBucket = requireStorageValue(
+    parsed.data.STORAGE_BUCKET ?? parsed.data.S3_BUCKET_NAME,
+    "S3_BUCKET_NAME or STORAGE_BUCKET",
+  );
+  const storageAccessKeyId = requireStorageValue(
+    parsed.data.STORAGE_ACCESS_KEY_ID ?? parsed.data.AWS_ACCESS_KEY_ID,
+    "AWS_ACCESS_KEY_ID or STORAGE_ACCESS_KEY_ID",
+    [AWS_ACCESS_KEY_PLACEHOLDER, STORAGE_ACCESS_KEY_PLACEHOLDER],
+  );
+  const storageSecretAccessKey = requireStorageValue(
+    parsed.data.STORAGE_SECRET_ACCESS_KEY ?? parsed.data.AWS_SECRET_ACCESS_KEY,
+    "AWS_SECRET_ACCESS_KEY or STORAGE_SECRET_ACCESS_KEY",
+    [AWS_SECRET_KEY_PLACEHOLDER, STORAGE_SECRET_KEY_PLACEHOLDER],
+  );
+  const storageEndpointValue = parsed.data.STORAGE_ENDPOINT;
+  if (storageEndpointValue) {
+    const storageEndpoint = new URL(storageEndpointValue);
+    if (
+      storageEndpoint.protocol !== "https:" &&
+      !(storageEndpoint.protocol === "http:" && isLocalhost(storageEndpoint))
+    ) {
+      throw new Error("STORAGE_ENDPOINT must use HTTPS outside localhost");
+    }
+  }
+
+  cachedConfig = {
+    clientId: parsed.data.TICKETING_CLIENT_ID,
+    clientSecret: new TextEncoder().encode(parsed.data.TICKETING_CLIENT_SECRET),
+    databaseUrl: parsed.data.DATABASE_TICKETING_URL,
+    ...(parsed.data.REDIS_TICKETING_URL
+      ? { redisUrl: parsed.data.REDIS_TICKETING_URL }
+      : {}),
+    storage: {
+      ...(storageEndpointValue ? { endpoint: storageEndpointValue } : {}),
+      region: storageRegion,
+      bucket: storageBucket,
+      accessKeyId: storageAccessKeyId,
+      secretAccessKey: storageSecretAccessKey,
+      forcePathStyle: parsed.data.STORAGE_FORCE_PATH_STYLE,
+    },
+  };
+  return cachedConfig;
+}

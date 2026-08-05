@@ -1,7 +1,10 @@
 export type PackageManager = "npm" | "pnpm" | "yarn" | "bun";
 
+export type TicketingMode = "connected" | "self-hosted";
+
 export type InitOptions = {
   cwd: string;
+  mode?: TicketingMode;
   yes: boolean;
   dryRun: boolean;
   overwrite: boolean;
@@ -56,11 +59,13 @@ export type Confirm = (message: string) => Promise<boolean>;
 export type TemplateFile = {
   source: string;
   target: string;
+  modes?: TicketingMode[];
 };
 
 export type TemplateManifest = {
   files: TemplateFile[];
   dependencies?: string[];
+  modeDependencies?: Partial<Record<TicketingMode, string[]>>;
   shadcnComponents?: string[];
 };
 
@@ -68,6 +73,7 @@ export type FileActionKind =
   | "create"
   | "update"
   | "overwrite"
+  | "remove"
   | "identical"
   | "conflict";
 
@@ -78,6 +84,7 @@ export type FileAction = {
 
 export type InitResult = {
   project: ProjectInfo;
+  mode: TicketingMode;
   actions: FileAction[];
   commands: CommandInvocation[];
   conflicts: string[];

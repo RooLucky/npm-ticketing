@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "placeholders": {
     "APP_ROOT": "Next.js App Router directory, for example src/app or app",
     "SOURCE_ROOT": "Source root, for example src or .",
@@ -45,7 +45,13 @@
     },
     {
       "source": "files/lib/ticketing/config.ts.template",
-      "target": "{{SOURCE_ROOT}}/lib/ticketing/config.ts"
+      "target": "{{SOURCE_ROOT}}/lib/ticketing/config.ts",
+      "modes": ["connected"]
+    },
+    {
+      "source": "files/lib/ticketing/config.self-hosted.ts.template",
+      "target": "{{SOURCE_ROOT}}/lib/ticketing/config.ts",
+      "modes": ["self-hosted"]
     },
     {
       "source": "files/lib/ticketing/session.ts.template",
@@ -53,7 +59,18 @@
     },
     {
       "source": "files/lib/ticketing/central-api.ts.template",
-      "target": "{{SOURCE_ROOT}}/lib/ticketing/central-api.ts"
+      "target": "{{SOURCE_ROOT}}/lib/ticketing/central-api.ts",
+      "modes": ["connected"]
+    },
+    {
+      "source": "files/lib/ticketing/backend.connected.ts.template",
+      "target": "{{SOURCE_ROOT}}/lib/ticketing/backend.ts",
+      "modes": ["connected"]
+    },
+    {
+      "source": "files/lib/ticketing/backend.self-hosted.ts.template",
+      "target": "{{SOURCE_ROOT}}/lib/ticketing/backend.ts",
+      "modes": ["self-hosted"]
     },
     {
       "source": "files/lib/ticketing/proxy.ts.template",

@@ -4,9 +4,9 @@ import { NextResponse } from "next/server";
 import { type ZodType, z } from "zod";
 
 import {
-  CentralApiRequestError,
-  requestCentralApi,
-} from "{{IMPORT_ALIAS}}/lib/ticketing/central-api";
+  TicketingBackendRequestError,
+  requestTicketingBackend,
+} from "{{IMPORT_ALIAS}}/lib/ticketing/backend";
 import { ApiErrorResponseSchema } from "{{IMPORT_ALIAS}}/lib/ticketing/schemas";
 import {
   TicketingSessionError,
@@ -137,6 +137,27 @@ function statusError(response: Response, requestId?: string, upstreamCode?: Erro
       retryAfter: response.headers.get("retry-after"),
     });
   }
+  if (response.status === 503) {
+    return ticketingError(
+      "UPSTREAM_UNAVAILABLE",
+      "The ticketing service is temporarily unavailable",
+      503,
+      { requestId },
+    );
+  }
+  if (response.status === 504) {
+    return ticketingError(
+      "UPSTREAM_TIMEOUT",
+      "The ticketing service took too long to respond",
+      504,
+      { requestId },
+    );
+  }
+  if (response.status >= 500) {
+    return ticketingError("INTERNAL_ERROR", "The ticketing request could not be completed", 500, {
+      requestId,
+    });
+  }
   return ticketingError("UPSTREAM_ERROR", "The ticketing service could not complete the request", 502, {
     requestId,
   });
@@ -164,7 +185,11 @@ export async function proxyTicketingRequest<T>(
     if (error instanceof TicketingSessionError) {
       return ticketingError(error.code, error.message, 401);
     }
-    return ticketingError("INVALID_SESSION", "The ticketing session is invalid", 401);
+    return ticketingError(
+      "INTERNAL_ERROR",
+      "Ticketing is not configured correctly",
+      500,
+    );
   }
 
   let body: unknown;
@@ -189,13 +214,13 @@ export async function proxyTicketingRequest<T>(
   }
 
   try {
-    const upstream = await requestCentralApi({
+    const upstream = await requestTicketingBackend({
       path: options.path,
       method: options.method,
       sessionToken: token,
-      body,
-      query: options.query,
-      idempotencyKey,
+      ...(body === undefined ? {} : { body }),
+      ...(options.query ? { query: options.query } : {}),
+      ...(idempotencyKey ? { idempotencyKey } : {}),
     });
     const requestId = safeRequestId(upstream);
 
@@ -226,7 +251,10 @@ export async function proxyTicketingRequest<T>(
       },
     });
   } catch (error) {
-    if (error instanceof CentralApiRequestError) {
+    if (error instanceof TicketingBackendRequestError) {
+      if (error.kind === "internal") {
+        return ticketingError("INTERNAL_ERROR", "Ticketing is not configured correctly", 500);
+      }
       return ticketingError(
         error.kind === "timeout" ? "UPSTREAM_TIMEOUT" : "UPSTREAM_UNAVAILABLE",
         error.kind === "timeout"

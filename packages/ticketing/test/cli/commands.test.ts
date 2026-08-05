@@ -80,6 +80,34 @@ describe("buildInstallCommands", () => {
     ).rejects.toThrow("zod ^3.25.0 is incompatible");
   });
 
+  it.each([
+    ["npm", ["install", "--save-exact", "@quanby/ticketing@0.2.0"]],
+    ["pnpm", ["add", "--save-exact", "@quanby/ticketing@0.2.0"]],
+    ["yarn", ["add", "--exact", "@quanby/ticketing@0.2.0"]],
+    ["bun", ["add", "--exact", "@quanby/ticketing@0.2.0"]],
+  ] as const)(
+    "installs and upgrades the package-owned runtime exactly with %s",
+    async (manager, expectedArgs) => {
+      const root = await mkdtemp(path.join(os.tmpdir(), `ticketing-runtime-${manager}-`));
+      temporaryDirectories.push(root);
+      await createNextProject(root, {
+        packageManager: manager,
+        shadcn: true,
+        dependencies: { "@quanby/ticketing": "0.1.1" },
+      });
+
+      const commands = await buildInstallCommands(
+        await detectProject(root),
+        ["@quanby/ticketing@0.2.0"],
+        [],
+        true,
+      );
+
+      expect(commands).toHaveLength(1);
+      expect(commands[0]?.args).toEqual(expectedArgs);
+    },
+  );
+
   it.each(["catalog:", "catalog:default"])(
     "resolves a compatible zod range from the default pnpm %s catalog",
     async (catalogReference) => {

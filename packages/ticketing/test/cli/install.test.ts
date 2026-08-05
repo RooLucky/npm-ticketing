@@ -88,6 +88,15 @@ describe("initProject", () => {
       { command: "npm", args: ["install", "jose@^6.1.0", "zod@^4.1.0"] },
     ]);
     expect(setup.runner.invocations).toHaveLength(0);
+    expect(setup.logger.infoMessages.join("\n")).toContain(
+      "create: src/components/ticketing/example.ts",
+    );
+    expect(setup.logger.infoMessages.join("\n")).toContain(
+      "Would run these dependency/UI commands:",
+    );
+    expect(setup.logger.infoMessages.join("\n")).toContain(
+      "npm install jose@^6.1.0 zod@^4.1.0",
+    );
     await expect(
       readFile(path.join(setup.project, "src/components/ticketing/example.ts"), "utf8"),
     ).rejects.toMatchObject({ code: "ENOENT" });
@@ -137,14 +146,168 @@ describe("initProject", () => {
     const generatedManifest = JSON.parse(
       await readFile(path.join(setup.project, ".ticketing/manifest.json"), "utf8"),
     ) as {
+      schemaVersion: number;
+      mode: string;
       package: { version: string };
       files: Record<string, { sha256: string }>;
     };
+    expect(generatedManifest.schemaVersion).toBe(2);
+    expect(generatedManifest.mode).toBe("connected");
     expect(generatedManifest.package.version).toBe("0.1.0-test");
     expect(generatedManifest.files["src/components/ticketing/example.ts"]?.sha256).toMatch(
       /^[a-f0-9]{64}$/,
     );
     expect(setup.runner.invocations).toHaveLength(0);
+  });
+
+  it("selects self-hosted templates, environment, and the exact current runtime", async () => {
+    const setup = await fixture();
+
+    const result = await initProject(
+      options(setup.project, { mode: "self-hosted" }),
+      setup.dependencies,
+    );
+
+    expect(result.mode).toBe("self-hosted");
+    expect(
+      await readFile(path.join(setup.project, "src/lib/ticketing/mode.ts"), "utf8"),
+    ).toContain('"self-hosted"');
+    const environment = await readFile(path.join(setup.project, ".env.example"), "utf8");
+    expect(environment).not.toContain("TICKETING_API_URL=");
+    expect(environment).toContain("DATABASE_TICKETING_URL=");
+    expect(environment).toContain("# REDIS_TICKETING_URL=");
+    expect(environment).toContain("AWS_ACCESS_KEY_ID=");
+    expect(environment).toContain("AWS_SECRET_ACCESS_KEY=");
+    expect(environment).toContain("AWS_REGION=ap-southeast-1");
+    expect(environment).toContain("S3_BUCKET_NAME=");
+    expect(environment).toContain("# STORAGE_ENDPOINT=");
+    expect(environment).toContain("# STORAGE_FORCE_PATH_STYLE=false");
+    expect(result.commands.map(({ args }) => args)).toEqual(
+      expect.arrayContaining([
+        expect.arrayContaining(["self-host-helper@^1.0.0"]),
+        expect.arrayContaining([
+          "--save-exact",
+          "@quanby/ticketing@0.1.0-test",
+        ]),
+      ]),
+    );
+    const generatedManifest = JSON.parse(
+      await readFile(path.join(setup.project, ".ticketing/manifest.json"), "utf8"),
+    ) as { mode: string };
+    expect(generatedManifest.mode).toBe("self-hosted");
+  });
+
+  it("reuses the recorded mode and safely switches unmodified mode templates", async () => {
+    const setup = await fixture();
+    await initProject(
+      options(setup.project, { mode: "self-hosted" }),
+      setup.dependencies,
+    );
+
+    const rerun = await initProject(options(setup.project), setup.dependencies);
+    expect(rerun.mode).toBe("self-hosted");
+    const rerunEnvironment = await readFile(
+      path.join(setup.project, ".env.example"),
+      "utf8",
+    );
+    expect(rerunEnvironment.match(/REDIS_TICKETING_URL=/g)).toHaveLength(1);
+
+    const switched = await initProject(
+      options(setup.project, { mode: "connected" }),
+      setup.dependencies,
+    );
+    expect(switched.mode).toBe("connected");
+    expect(switched.actions).toContainEqual({
+      kind: "update",
+      path: "src/lib/ticketing/mode.ts",
+    });
+    expect(
+      await readFile(path.join(setup.project, "src/lib/ticketing/mode.ts"), "utf8"),
+    ).toContain('"connected"');
+    const environment = await readFile(path.join(setup.project, ".env.example"), "utf8");
+    expect(environment).toContain("DATABASE_TICKETING_URL=");
+    expect(environment).toContain("TICKETING_API_URL=");
+  });
+
+  it("does not commit a mixed mode when a mode-owned file has local changes", async () => {
+    const setup = await fixture();
+    await initProject(options(setup.project), setup.dependencies);
+    await writeText(setup.project, "src/lib/ticketing/mode.ts", "user mode adapter\n");
+
+    await expect(
+      initProject(
+        options(setup.project, { mode: "self-hosted" }),
+        setup.dependencies,
+      ),
+    ).rejects.toThrow("Cannot switch ticketing mode from connected to self-hosted");
+
+    expect(
+      await readFile(path.join(setup.project, "src/lib/ticketing/mode.ts"), "utf8"),
+    ).toBe("user mode adapter\n");
+    const generatedManifest = JSON.parse(
+      await readFile(path.join(setup.project, ".ticketing/manifest.json"), "utf8"),
+    ) as { mode: string };
+    expect(generatedManifest.mode).toBe("connected");
+  });
+
+  it("allows a mode switch to preserve shared files whose template did not change", async () => {
+    const setup = await fixture();
+    await initProject(options(setup.project), setup.dependencies);
+    await writeText(
+      setup.project,
+      "src/components/ticketing/example.ts",
+      "custom shared portal\n",
+    );
+
+    const switched = await initProject(
+      options(setup.project, { mode: "self-hosted" }),
+      setup.dependencies,
+    );
+
+    expect(switched.mode).toBe("self-hosted");
+    expect(switched.conflicts).toContain("src/components/ticketing/example.ts");
+    expect(switched.actions).toContainEqual({
+      kind: "remove",
+      path: "src/lib/ticketing/connected-only.ts",
+    });
+    expect(
+      await readFile(
+        path.join(setup.project, "src/components/ticketing/example.ts"),
+        "utf8",
+      ),
+    ).toBe("custom shared portal\n");
+    await expect(
+      readFile(
+        path.join(setup.project, "src/lib/ticketing/connected-only.ts"),
+        "utf8",
+      ),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("upgrades schema-v1 manifests as connected installs", async () => {
+    const setup = await fixture();
+    await initProject(options(setup.project), setup.dependencies);
+    const manifestPath = path.join(setup.project, ".ticketing/manifest.json");
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as Record<
+      string,
+      unknown
+    >;
+    manifest.schemaVersion = 1;
+    delete manifest.mode;
+    await writeText(
+      setup.project,
+      ".ticketing/manifest.json",
+      `${JSON.stringify(manifest, null, 2)}\n`,
+    );
+
+    const rerun = await initProject(options(setup.project), setup.dependencies);
+
+    expect(rerun.mode).toBe("connected");
+    const upgraded = JSON.parse(await readFile(manifestPath, "utf8")) as {
+      schemaVersion: number;
+      mode: string;
+    };
+    expect(upgraded).toMatchObject({ schemaVersion: 2, mode: "connected" });
   });
 
   it("renders working relative imports when no source-root alias exists", async () => {

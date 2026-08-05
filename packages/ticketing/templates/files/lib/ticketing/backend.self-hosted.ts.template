@@ -1,0 +1,87 @@
+import "server-only";
+
+import {
+  executeSelfHostedTicketingRequest,
+  SelfHostedTicketingError,
+} from "@quanby/ticketing/self-hosted";
+
+import { getTicketingConfig } from "{{IMPORT_ALIAS}}/lib/ticketing/config";
+
+export class TicketingBackendRequestError extends Error {
+  constructor(public readonly kind: "timeout" | "unavailable" | "internal") {
+    super("The ticketing backend request failed");
+    this.name = "TicketingBackendRequestError";
+  }
+}
+
+export type TicketingBackendRequest = {
+  path: string;
+  method: "GET" | "POST";
+  sessionToken: string;
+  body?: unknown;
+  query?: Record<string, string | number | undefined>;
+  idempotencyKey?: string;
+};
+
+export async function requestTicketingBackend(
+  input: TicketingBackendRequest,
+): Promise<Response> {
+  const {
+    clientId,
+    clientSecret,
+    databaseUrl,
+    redisUrl,
+    storage,
+  } = getTicketingConfig();
+
+  try {
+    return await executeSelfHostedTicketingRequest({
+      config: {
+        clientId,
+        clientSecret,
+        databaseUrl,
+        ...(redisUrl ? { redisUrl } : {}),
+        storage: {
+          ...(storage.endpoint ? { endpoint: storage.endpoint } : {}),
+          region: storage.region,
+          bucket: storage.bucket,
+          accessKeyId: storage.accessKeyId,
+          secretAccessKey: storage.secretAccessKey,
+          forcePathStyle: storage.forcePathStyle,
+        },
+      },
+      sessionToken: input.sessionToken,
+      operation: {
+        path: input.path,
+        method: input.method,
+        ...(input.body === undefined ? {} : { body: input.body }),
+        ...(input.query ? { query: input.query } : {}),
+        ...(input.idempotencyKey
+          ? { idempotencyKey: input.idempotencyKey }
+          : {}),
+      },
+    });
+  } catch (error) {
+    if (error instanceof SelfHostedTicketingError) {
+      return Response.json(
+        {
+          error: {
+            code: error.code,
+            message: error.message,
+            ...(error.fieldErrors ? { fieldErrors: error.fieldErrors } : {}),
+            ...(error.requestId ? { requestId: error.requestId } : {}),
+          },
+        },
+        {
+          status: error.status,
+          headers: {
+            "Cache-Control": "no-store",
+            ...(error.requestId ? { "X-Request-Id": error.requestId } : {}),
+            ...(error.retryAfter ? { "Retry-After": error.retryAfter } : {}),
+          },
+        },
+      );
+    }
+    throw new TicketingBackendRequestError("internal");
+  }
+}

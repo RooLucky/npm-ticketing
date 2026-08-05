@@ -19,6 +19,7 @@
     "test:coverage": "npm run test:coverage --workspaces --if-present",
     "test:e2e": "npm run test:e2e --workspace=@quanby/ticketing-playground",
     "test:packed-cli": "node ./scripts/smoke-packed-cli.mjs",
+    "test:self-hosted-fixture": "node ./scripts/test-self-hosted-fixture.mjs",
     "bundle:scan": "node ./scripts/scan-client-bundle.mjs",
     "release:verify-tag": "node ./scripts/assert-release-tag.mjs",
     "contract:generate": "npm run openapi:generate --workspace=@quanby/ticketing-contracts",

@@ -175,6 +175,25 @@ try {
     assertDryRun(invocation.name, output);
     console.log(`Verified ${invocation.name} with ${filename}.`);
   }
+
+  const selfHosted = await run(process.execPath, [
+    pnpxCliPath,
+    packageSpecifier,
+    ...cliArguments,
+    "--mode",
+    "self-hosted",
+  ], { cwd: temporaryRoot });
+  assertDryRun("pnpx self-hosted", selfHosted);
+  const selfHostedOutput = `${selfHosted.stdout}\n${selfHosted.stderr}`;
+  if (
+    !selfHostedOutput.includes("Ticketing mode: self-hosted.") ||
+    !selfHostedOutput.includes(`@quanby/ticketing@${packed[0].version}`)
+  ) {
+    throw new Error(
+      `pnpx self-hosted did not plan the package-owned runtime.\n${selfHostedOutput}`,
+    );
+  }
+  console.log(`Verified pnpx self-hosted with ${filename}.`);
 } finally {
   await rm(temporaryRoot, { recursive: true, force: true });
 }

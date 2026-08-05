@@ -1,13 +1,15 @@
 {
   "name": "@quanby/ticketing",
-  "version": "0.1.1",
-  "description": "Generate an editable, secure ticketing portal for Next.js App Router applications.",
+  "version": "0.2.0",
+  "description": "Generate an editable, secure ticketing portal with connected or self-hosted persistence for Next.js App Router applications.",
   "author": "Quanby",
   "keywords": [
     "ticketing",
     "support",
     "nextjs",
     "react",
+    "postgresql",
+    "s3",
     "shadcn",
     "cli"
   ],
@@ -15,6 +17,13 @@
   "type": "module",
   "bin": {
     "ticketing": "dist/cli/index.js"
+  },
+  "exports": {
+    "./self-hosted": {
+      "types": "./dist/self-hosted/index.d.ts",
+      "import": "./dist/self-hosted/index.js",
+      "default": "./dist/self-hosted/index.js"
+    }
   },
   "files": [
     "dist",
@@ -46,14 +55,21 @@
     "prepack": "npm run clean && npm run build && npm test"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1103.0",
+    "@aws-sdk/s3-request-presigner": "^3.1103.0",
     "commander": "^14.0.0",
+    "dotenv": "^17.4.2",
     "execa": "^9.6.0",
+    "jose": "^6.2.8",
+    "pg": "^8.16.3",
+    "redis": "^6.2.0",
     "semver": "^7.8.5",
     "shadcn": "4.16.1",
     "yaml": "^2.8.1",
     "zod": "^4.0.14"
   },
   "devDependencies": {
+    "@types/pg": "^8.20.4",
     "@types/semver": "^7.7.0",
     "@vitest/coverage-v8": "^3.2.4"
   }

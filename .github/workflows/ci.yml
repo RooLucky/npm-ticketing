@@ -14,11 +14,32 @@ jobs:
       TICKETING_API_URL: https://support.example.test/api/v1
       TICKETING_CLIENT_ID: ci-static-bundle-check
       TICKETING_CLIENT_SECRET: ci-static-bundle-sentinel-not-a-real-credential-2026
+      TEST_DATABASE_TICKETING_URL: postgresql://ticketing:ticketing@127.0.0.1:5432/ticketing_test
+      TEST_TICKETING_STORAGE_ENDPOINT: http://127.0.0.1:9000
+      TEST_TICKETING_STORAGE_REGION: us-east-1
+      TEST_TICKETING_STORAGE_BUCKET: ticketing-integration
+      TEST_TICKETING_STORAGE_ACCESS_KEY_ID: minioadmin
+      TEST_TICKETING_STORAGE_SECRET_ACCESS_KEY: minioadmin
+      TEST_TICKETING_STORAGE_FORCE_PATH_STYLE: "true"
     strategy:
       fail-fast: false
       matrix:
         node: [22.14.0, 24]
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres@sha256:ec68817297c5984a00c85c9e3bbd88079d0217284f1a3f0525603a6f9b883916
+        env:
+          POSTGRES_USER: ticketing
+          POSTGRES_PASSWORD: ticketing
+          POSTGRES_DB: ticketing_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ticketing -d ticketing_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
@@ -27,12 +48,33 @@ jobs:
           cache: npm
       - run: npm install --global npm@11.13.0
       - run: npm ci
+      - name: Start pinned MinIO and create the integration bucket
+        run: |
+          docker run --detach --name ticketing-minio \
+            --publish 9000:9000 \
+            --env MINIO_ROOT_USER=minioadmin \
+            --env MINIO_ROOT_PASSWORD=minioadmin \
+            --env MINIO_BROWSER=off \
+            minio/minio@sha256:f6efb212cad3b62f78ca02339f16d8bc28d5bb2fbe792dfc21225c6037d2af8b \
+            server /data --address ":9000"
+          for attempt in {1..30}; do
+            if curl --silent --fail http://127.0.0.1:9000/minio/health/live; then
+              break
+            fi
+            sleep 1
+          done
+          curl --silent --show-error --fail http://127.0.0.1:9000/minio/health/live
+          docker run --rm --network host --entrypoint /bin/sh \
+            minio/mc@sha256:ec0d227b865fc49ce77c2a84b121880899723518d0d73063c0f9b7b68836e6b1 \
+            -c "mc alias set local http://127.0.0.1:9000 minioadmin minioadmin && mc mb --ignore-existing local/ticketing-integration"
       - run: npm run check
       - run: npm run pack:verify
       - if: matrix.node == 24
         run: npm run bundle:scan
       - if: matrix.node == 24
         run: npm run test:packed-cli
+      - if: matrix.node == 24
+        run: npm run test:self-hosted-fixture
       - if: matrix.node == 24
         run: npx playwright install --with-deps chromium
       - if: matrix.node == 24

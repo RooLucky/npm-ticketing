@@ -4,25 +4,38 @@ import path from "node:path";
 import { z } from "zod";
 import { CliError } from "./errors.js";
 import { parseJsonc } from "./json.js";
-import type { ProjectInfo, TemplateManifest } from "./types.js";
+import type {
+  ProjectInfo,
+  TemplateManifest,
+  TicketingMode,
+} from "./types.js";
+
+const ticketingModeSchema = z.enum(["connected", "self-hosted"]);
+const dependencySetSchema = z.union([
+  z.array(z.string().min(1)),
+  z.record(z.string().min(1), z.string().min(1)),
+]);
 
 const templateManifestSchema = z
   .object({
-    schemaVersion: z.literal(1).optional(),
+    schemaVersion: z.union([z.literal(1), z.literal(2)]).optional(),
     placeholders: z.record(z.string(), z.string()).optional(),
     files: z
       .array(
         z.object({
           source: z.string().min(1),
           target: z.string().min(1),
+          modes: z.array(ticketingModeSchema).min(1).optional(),
         }),
       )
       .min(1),
-    dependencies: z
-      .union([
-        z.array(z.string().min(1)),
-        z.record(z.string().min(1), z.string().min(1)),
-      ])
+    dependencies: dependencySetSchema.optional(),
+    modeDependencies: z
+      .object({
+        connected: dependencySetSchema.optional(),
+        "self-hosted": dependencySetSchema.optional(),
+      })
+      .strict()
       .optional(),
     shadcnComponents: z.array(z.string().min(1)).optional(),
   })
@@ -40,6 +53,15 @@ export type LoadedTemplates = {
   manifest: TemplateManifest;
   files: RenderedTemplate[];
 };
+
+function normalizeDependencies(
+  dependencies: string[] | Record<string, string> | undefined,
+): string[] | undefined {
+  if (!dependencies) return undefined;
+  return Array.isArray(dependencies)
+    ? dependencies
+    : Object.entries(dependencies).map(([name, version]) => `${name}@${version}`);
+}
 
 function isWithin(root: string, candidate: string): boolean {
   const relative = path.relative(root, candidate);
@@ -134,6 +156,7 @@ export function sha256(content: string | Buffer): string {
 export async function loadTemplates(
   templatesDirectory: string,
   project: ProjectInfo,
+  mode: TicketingMode = "connected",
 ): Promise<LoadedTemplates> {
   const templatesRoot = await realpath(path.resolve(templatesDirectory)).catch((error) => {
     throw new CliError(`Templates directory does not exist: ${templatesDirectory}`, 1, {
@@ -156,13 +179,33 @@ export async function loadTemplates(
         .join("; ")}`,
     );
   }
+  const selectedFiles = validated.data.files.filter(
+    (file) => !file.modes || file.modes.includes(mode),
+  );
+  if (selectedFiles.length === 0) {
+    throw new CliError(`Template manifest does not define any files for ${mode} mode.`);
+  }
+
+  const commonDependencies = normalizeDependencies(validated.data.dependencies);
+  const connectedDependencies = normalizeDependencies(
+    validated.data.modeDependencies?.connected,
+  );
+  const selfHostedDependencies = normalizeDependencies(
+    validated.data.modeDependencies?.["self-hosted"],
+  );
   const manifest: TemplateManifest = {
-    files: validated.data.files,
-    dependencies: Array.isArray(validated.data.dependencies)
-      ? validated.data.dependencies
-      : Object.entries(validated.data.dependencies ?? {}).map(
-          ([name, version]) => `${name}@${version}`,
-        ),
+    files: selectedFiles.map((file) => ({
+      source: file.source,
+      target: file.target,
+      ...(file.modes ? { modes: file.modes } : {}),
+    })),
+    ...(commonDependencies ? { dependencies: commonDependencies } : {}),
+    modeDependencies: {
+      ...(connectedDependencies ? { connected: connectedDependencies } : {}),
+      ...(selfHostedDependencies
+        ? { "self-hosted": selfHostedDependencies }
+        : {}),
+    },
     ...(validated.data.shadcnComponents
       ? { shadcnComponents: validated.data.shadcnComponents }
       : {}),
@@ -176,7 +219,7 @@ export async function loadTemplates(
   const seenTargets = new Set<string>();
   const files: RenderedTemplate[] = [];
 
-  for (const entry of manifest.files) {
+  for (const entry of selectedFiles) {
     const sourcePath = path.resolve(templatesRoot, entry.source.replaceAll("/", path.sep));
     if (!isWithin(templatesRoot, sourcePath) || sourcePath === templatesRoot) {
       throw new CliError(`Template source escapes the templates directory: ${entry.source}`);

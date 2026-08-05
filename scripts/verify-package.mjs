@@ -39,6 +39,8 @@ const names = new Set(pack.files.map((file) => file.path.replaceAll("\\", "/")))
 
 for (const required of [
   "dist/cli/index.js",
+  "dist/self-hosted/index.js",
+  "dist/self-hosted/index.d.ts",
   "dist/openapi/ticketing-v1.openapi.yaml",
   "templates/manifest.json",
   "README.md",

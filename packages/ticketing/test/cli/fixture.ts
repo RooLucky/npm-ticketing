@@ -96,14 +96,32 @@ export async function createTemplates(
     "manifest.json",
     `${JSON.stringify(
       {
-        schemaVersion: 1,
+        schemaVersion: 2,
         placeholders: { IMPORT_ALIAS: "test" },
         dependencies: { jose: "^6.1.0", zod: "^4.1.0" },
+        modeDependencies: {
+          "self-hosted": { "self-host-helper": "^1.0.0" },
+        },
         shadcnComponents: ["button", "card"],
         files: [
           {
             source: "files/example.ts.template",
             target: "{{SOURCE_ROOT}}/components/ticketing/example.ts",
+          },
+          {
+            source: "files/mode.connected.ts.template",
+            target: "{{SOURCE_ROOT}}/lib/ticketing/mode.ts",
+            modes: ["connected"],
+          },
+          {
+            source: "files/mode.self-hosted.ts.template",
+            target: "{{SOURCE_ROOT}}/lib/ticketing/mode.ts",
+            modes: ["self-hosted"],
+          },
+          {
+            source: "files/connected-only.ts.template",
+            target: "{{SOURCE_ROOT}}/lib/ticketing/connected-only.ts",
+            modes: ["connected"],
           },
         ],
       },
@@ -112,6 +130,9 @@ export async function createTemplates(
     )}\n`,
   );
   await writeText(root, "files/example.ts.template", content);
+  await writeText(root, "files/mode.connected.ts.template", 'export const mode = "connected";\n');
+  await writeText(root, "files/mode.self-hosted.ts.template", 'export const mode = "self-hosted";\n');
+  await writeText(root, "files/connected-only.ts.template", "export const connected = true;\n");
 }
 
 export class RecordingRunner implements CommandRunner {
