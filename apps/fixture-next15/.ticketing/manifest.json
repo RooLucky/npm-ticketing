@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "package": {
+    "name": "@quanby/ticketing",
+    "version": "0.1.0"
+  },
+  "files": {
+    "src/components/ticketing/Ticketing.tsx": {
+      "sha256": "f4bad70f90636ee49a845375d9156255538b6398fb226c616096a38efa86a2a3"
+    },
+    "src/components/ticketing/TicketingPortal.tsx": {
+      "sha256": "61b70696e05e69ca2fdeb36b82bc87395bfef51e39ee9dc6decd226d50f21b27"
+    },
+    "src/components/ticketing/AttachmentPicker.tsx": {
+      "sha256": "41941ea66127ec654c1948c64df1917b242b1c183b3fa09223da8e83f2090fc7"
+    },
+    "src/components/ticketing/index.ts": {
+      "sha256": "7c160d7f41e47420b52d281fc6345f553d9ac7743297625f48b12fa475d54534"
+    },
+    "src/lib/ticketing/schemas.ts": {
+      "sha256": "8735c6f71d9054cce13d684d684ac40e4d73d1bca441026e41f4a0fbf067ba28"
+    },
+    "src/lib/ticketing/config.ts": {
+      "sha256": "869b8f17cdfdc379da056cba5fcd8d7687408ad25136c923d8448ca06986cc89"
+    },
+    "src/lib/ticketing/session.ts": {
+      "sha256": "47fea35449890c2ef92af408f4887763d6a77908eea45ef365624dff452e73ba"
+    },
+    "src/lib/ticketing/central-api.ts": {
+      "sha256": "bc6d157ff16a38cd9e7365106c238d75c9ec87a198cb2da0bba15a38ed0bf480"
+    },
+    "src/lib/ticketing/proxy.ts": {
+      "sha256": "edb485230eebe9136027ffc9ca7ee86eab54058c7ed51899af1fae921bbbc1a7"
+    },
+    "src/app/api/ticketing/uploads/presign/route.ts": {
+      "sha256": "37f07767e059efa2567b423dc3a0c33bade21593b0bdaf1d22ba2f20ba958fd6"
+    },
+    "src/app/api/ticketing/tickets/route.ts": {
+      "sha256": "7a829b2755f0208f33db9916adf15e59b3eaed0ab8642ad440a20e9a9134de02"
+    },
+    "src/app/api/ticketing/tickets/[ticketId]/route.ts": {
+      "sha256": "357f5bf90ea8599ce0b10b6663dcfa8fe6effc52e2aadd21c6be5c8a202b7132"
+    },
+    "src/app/api/ticketing/tickets/[ticketId]/replies/route.ts": {
+      "sha256": "a7e033f012bcb3a3daa3e8880df9432fd017d57c4f8935e885c3ad559845cb2c"
+    }
+  }
+}

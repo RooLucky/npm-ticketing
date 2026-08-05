@@ -1,0 +1,29 @@
+{
+  "name": "@quanby/ticketing-contracts",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/schemas.js",
+  "types": "./dist/schemas.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/schemas.d.ts",
+      "import": "./dist/schemas.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "openapi:generate": "tsx src/generate-openapi.ts",
+    "contract:check": "tsx src/generate-openapi.ts --check"
+  },
+  "dependencies": {
+    "yaml": "^2.8.1",
+    "zod": "^4.1.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.20.3"
+  }
+}

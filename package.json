@@ -1,0 +1,48 @@
+{
+  "name": "quanby-ticketing-workspace",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "npm@11.13.0",
+  "description": "Workspace for the @quanby/ticketing source-generating CLI.",
+  "workspaces": [
+    "contracts",
+    "packages/*",
+    "tools/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "clean": "npm run clean --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "eslint .",
+    "test": "npm run test --workspaces --if-present",
+    "test:coverage": "npm run test:coverage --workspaces --if-present",
+    "test:e2e": "npm run test:e2e --workspace=@quanby/ticketing-playground",
+    "test:packed-cli": "node ./scripts/smoke-packed-cli.mjs",
+    "bundle:scan": "node ./scripts/scan-client-bundle.mjs",
+    "release:verify-tag": "node ./scripts/assert-release-tag.mjs",
+    "contract:generate": "npm run openapi:generate --workspace=@quanby/ticketing-contracts",
+    "contract:check": "npm run contract:check --workspace=@quanby/ticketing-contracts",
+    "contract:lint": "redocly lint contracts/openapi/ticketing-v1.yaml",
+    "check": "npm run lint && npm run contract:check && npm run contract:lint && npm run typecheck && npm run test && npm run build",
+    "pack:dry-run": "npm pack --workspace=@quanby/ticketing --dry-run",
+    "pack:verify": "node ./scripts/verify-package.mjs",
+    "pack": "npm pack --workspace=@quanby/ticketing"
+  },
+  "engines": {
+    "node": ">=22.14.0",
+    "npm": ">=11.5.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.32.0",
+    "@redocly/cli": "^2.44.1",
+    "@types/node": "^24.1.0",
+    "eslint": "^9.32.0",
+    "globals": "^16.3.0",
+    "react": "19.1.9",
+    "react-dom": "19.1.9",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.38.0",
+    "vitest": "^3.2.4"
+  }
+}

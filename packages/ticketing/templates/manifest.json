@@ -1,0 +1,79 @@
+{
+  "schemaVersion": 1,
+  "placeholders": {
+    "APP_ROOT": "Next.js App Router directory, for example src/app or app",
+    "SOURCE_ROOT": "Source root, for example src or .",
+    "IMPORT_ALIAS": "Resolved import alias without a trailing slash, for example @",
+    "UI_IMPORT": "Resolved shadcn UI import path, for example @/components/ui"
+  },
+  "dependencies": {
+    "jose": "^6.1.0",
+    "zod": "^4.1.0"
+  },
+  "shadcnComponents": [
+    "alert",
+    "badge",
+    "button",
+    "card",
+    "input",
+    "progress",
+    "select",
+    "separator",
+    "skeleton",
+    "textarea"
+  ],
+  "files": [
+    {
+      "source": "files/components/ticketing/Ticketing.tsx.template",
+      "target": "{{SOURCE_ROOT}}/components/ticketing/Ticketing.tsx"
+    },
+    {
+      "source": "files/components/ticketing/TicketingPortal.tsx.template",
+      "target": "{{SOURCE_ROOT}}/components/ticketing/TicketingPortal.tsx"
+    },
+    {
+      "source": "files/components/ticketing/AttachmentPicker.tsx.template",
+      "target": "{{SOURCE_ROOT}}/components/ticketing/AttachmentPicker.tsx"
+    },
+    {
+      "source": "files/components/ticketing/index.ts.template",
+      "target": "{{SOURCE_ROOT}}/components/ticketing/index.ts"
+    },
+    {
+      "source": "files/lib/ticketing/schemas.ts.template",
+      "target": "{{SOURCE_ROOT}}/lib/ticketing/schemas.ts"
+    },
+    {
+      "source": "files/lib/ticketing/config.ts.template",
+      "target": "{{SOURCE_ROOT}}/lib/ticketing/config.ts"
+    },
+    {
+      "source": "files/lib/ticketing/session.ts.template",
+      "target": "{{SOURCE_ROOT}}/lib/ticketing/session.ts"
+    },
+    {
+      "source": "files/lib/ticketing/central-api.ts.template",
+      "target": "{{SOURCE_ROOT}}/lib/ticketing/central-api.ts"
+    },
+    {
+      "source": "files/lib/ticketing/proxy.ts.template",
+      "target": "{{SOURCE_ROOT}}/lib/ticketing/proxy.ts"
+    },
+    {
+      "source": "files/app/api/ticketing/uploads/presign/route.ts.template",
+      "target": "{{APP_ROOT}}/api/ticketing/uploads/presign/route.ts"
+    },
+    {
+      "source": "files/app/api/ticketing/tickets/route.ts.template",
+      "target": "{{APP_ROOT}}/api/ticketing/tickets/route.ts"
+    },
+    {
+      "source": "files/app/api/ticketing/tickets/[ticketId]/route.ts.template",
+      "target": "{{APP_ROOT}}/api/ticketing/tickets/[ticketId]/route.ts"
+    },
+    {
+      "source": "files/app/api/ticketing/tickets/[ticketId]/replies/route.ts.template",
+      "target": "{{APP_ROOT}}/api/ticketing/tickets/[ticketId]/replies/route.ts"
+    }
+  ]
+}

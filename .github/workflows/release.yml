@@ -1,0 +1,36 @@
+name: Publish npm package
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: npm
+    env:
+      TICKETING_API_URL: https://support.example.test/api/v1
+      TICKETING_CLIENT_ID: release-static-bundle-check
+      TICKETING_CLIENT_SECRET: release-static-bundle-sentinel-not-a-real-credential-2026
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+      - run: npm install --global npm@11.13.0
+      - run: npm ci
+      - run: npm run release:verify-tag
+      - run: npm run check
+      - run: npm run bundle:scan
+      - run: npm run pack:verify
+      - run: npm run test:packed-cli
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - run: npm publish --workspace=@quanby/ticketing --access public

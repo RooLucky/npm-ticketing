@@ -1,0 +1,108 @@
+import "server-only";
+
+import { randomUUID } from "node:crypto";
+import { errors, jwtVerify, SignJWT } from "jose";
+import { z } from "zod";
+
+import { getTicketingConfig } from "{{IMPORT_ALIAS}}/lib/ticketing/config";
+import {
+  TicketingPageUrlSchema,
+  TicketingUserSchema,
+  type TicketingUser,
+} from "{{IMPORT_ALIAS}}/lib/ticketing/schemas";
+
+export const TICKETING_SESSION_AUDIENCE = "ticketing-api";
+
+const SessionClaimsSchema = z.object({
+  iss: z.string().min(1).max(128),
+  sub: z.string().min(1).max(256),
+  aud: z.union([
+    z.literal(TICKETING_SESSION_AUDIENCE),
+    z.array(z.literal(TICKETING_SESSION_AUDIENCE)).min(1),
+  ]),
+  exp: z.number().int(),
+  iat: z.number().int(),
+  jti: z.string().min(1).max(128),
+  name: z.string().min(1).max(256),
+  email: z.email().optional(),
+  sourceSystem: z.string().min(1).max(128),
+  moduleName: z.string().min(1).max(128).optional(),
+  pageUrl: TicketingPageUrlSchema.optional(),
+  scopes: z
+    .array(z.enum(["tickets:read", "tickets:create", "tickets:reply", "uploads:create"]))
+    .min(1)
+    .refine((scopes) => new Set(scopes).size === scopes.length),
+}).refine((claims) => claims.exp > claims.iat && claims.exp - claims.iat <= 3600);
+
+const CreateTicketingSessionInputSchema = z.object({
+  user: TicketingUserSchema,
+  sourceSystem: z.string().trim().min(1).max(128),
+  moduleName: z.string().trim().min(1).max(128).optional(),
+  pageUrl: TicketingPageUrlSchema.optional(),
+});
+
+export type TicketingSessionClaims = z.infer<typeof SessionClaimsSchema>;
+
+export type CreateTicketingSessionInput = {
+  user: TicketingUser;
+  sourceSystem: string;
+  moduleName?: string;
+  pageUrl?: string;
+};
+
+export class TicketingSessionError extends Error {
+  constructor(
+    public readonly code: "INVALID_SESSION" | "SESSION_EXPIRED",
+    message: string,
+  ) {
+    super(message);
+    this.name = "TicketingSessionError";
+  }
+}
+
+export async function createTicketingSession(input: CreateTicketingSessionInput) {
+  const config = getTicketingConfig();
+  const parsedInput = CreateTicketingSessionInputSchema.parse(input);
+  const user = parsedInput.user;
+
+  return new SignJWT({
+    name: user.name,
+    ...(user.email ? { email: user.email } : {}),
+    sourceSystem: parsedInput.sourceSystem,
+    ...(parsedInput.moduleName ? { moduleName: parsedInput.moduleName } : {}),
+    ...(parsedInput.pageUrl ? { pageUrl: parsedInput.pageUrl } : {}),
+    scopes: ["tickets:read", "tickets:create", "tickets:reply", "uploads:create"],
+  })
+    .setProtectedHeader({ alg: "HS256", typ: "JWT", kid: config.clientId })
+    .setIssuer(config.clientId)
+    .setSubject(user.id)
+    .setAudience(TICKETING_SESSION_AUDIENCE)
+    .setJti(randomUUID())
+    .setIssuedAt()
+    .setExpirationTime("60m")
+    .sign(config.clientSecret);
+}
+
+export async function verifyTicketingSession(token: string): Promise<TicketingSessionClaims> {
+  const config = getTicketingConfig();
+
+  try {
+    const { payload, protectedHeader } = await jwtVerify(token, config.clientSecret, {
+      algorithms: ["HS256"],
+      issuer: config.clientId,
+      audience: TICKETING_SESSION_AUDIENCE,
+    });
+
+    if (protectedHeader.kid !== config.clientId) {
+      throw new TicketingSessionError("INVALID_SESSION", "The ticketing session is invalid");
+    }
+
+    return SessionClaimsSchema.parse(payload);
+  } catch (error) {
+    if (error instanceof TicketingSessionError) throw error;
+    if (error instanceof errors.JWTExpired) {
+      throw new TicketingSessionError("SESSION_EXPIRED", "Your ticketing session has expired");
+    }
+    throw new TicketingSessionError("INVALID_SESSION", "The ticketing session is invalid");
+  }
+}

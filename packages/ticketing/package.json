@@ -1,0 +1,59 @@
+{
+  "name": "@quanby/ticketing",
+  "version": "0.1.0",
+  "description": "Generate an editable, secure ticketing portal for Next.js App Router applications.",
+  "author": "Quanby",
+  "keywords": [
+    "ticketing",
+    "support",
+    "nextjs",
+    "react",
+    "shadcn",
+    "cli"
+  ],
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "ticketing": "dist/cli/index.js"
+  },
+  "files": [
+    "dist",
+    "templates",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RooLucky/npm-ticketing.git",
+    "directory": "packages/ticketing"
+  },
+  "homepage": "https://github.com/RooLucky/npm-ticketing#readme",
+  "bugs": {
+    "url": "https://github.com/RooLucky/npm-ticketing/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=22.14.0"
+  },
+  "scripts": {
+    "build": "node ./scripts/build.mjs",
+    "clean": "node ./scripts/clean.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "prepack": "npm run clean && npm run build && npm test"
+  },
+  "dependencies": {
+    "commander": "^14.0.0",
+    "execa": "^9.6.0",
+    "semver": "^7.8.5",
+    "shadcn": "4.16.1",
+    "zod": "^4.0.14"
+  },
+  "devDependencies": {
+    "@types/semver": "^7.7.0",
+    "@vitest/coverage-v8": "^3.2.4"
+  }
+}

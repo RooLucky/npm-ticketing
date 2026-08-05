@@ -1,0 +1,54 @@
+import "server-only";
+
+import { getTicketingConfig } from "@/lib/ticketing/config";
+
+const REQUEST_TIMEOUT_MS = 15_000;
+
+export class CentralApiRequestError extends Error {
+  constructor(public readonly kind: "timeout" | "unavailable") {
+    super(kind === "timeout" ? "Ticketing API request timed out" : "Ticketing API is unavailable");
+    this.name = "CentralApiRequestError";
+  }
+}
+
+export type CentralApiRequest = {
+  path: string;
+  method: "GET" | "POST";
+  sessionToken: string;
+  body?: unknown;
+  query?: Record<string, string | number | undefined>;
+  idempotencyKey?: string;
+};
+
+export async function requestCentralApi(input: CentralApiRequest): Promise<Response> {
+  const config = getTicketingConfig();
+  const path = input.path.replace(/^\/+/, "");
+  const url = new URL(path, config.apiUrl);
+
+  for (const [key, value] of Object.entries(input.query ?? {})) {
+    if (value !== undefined) url.searchParams.set(key, String(value));
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  try {
+    return await fetch(url, {
+      method: input.method,
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${input.sessionToken}`,
+        ...(input.body === undefined ? {} : { "Content-Type": "application/json" }),
+        ...(input.idempotencyKey ? { "Idempotency-Key": input.idempotencyKey } : {}),
+      },
+      body: input.body === undefined ? undefined : JSON.stringify(input.body),
+      cache: "no-store",
+      redirect: "error",
+      signal: controller.signal,
+    });
+  } catch {
+    throw new CentralApiRequestError(controller.signal.aborted ? "timeout" : "unavailable");
+  } finally {
+    clearTimeout(timeout);
+  }
+}

@@ -1,0 +1,2 @@
+export { Ticketing } from "{{IMPORT_ALIAS}}/components/ticketing/Ticketing";
+export type { TicketingProps, TicketingUser } from "{{IMPORT_ALIAS}}/lib/ticketing/schemas";

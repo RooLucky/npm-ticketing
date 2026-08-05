@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    env:
+      TICKETING_API_URL: https://support.example.test/api/v1
+      TICKETING_CLIENT_ID: ci-static-bundle-check
+      TICKETING_CLIENT_SECRET: ci-static-bundle-sentinel-not-a-real-credential-2026
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22.14.0, 24]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm install --global npm@11.13.0
+      - run: npm ci
+      - run: npm run check
+      - run: npm run pack:verify
+      - if: matrix.node == 24
+        run: npm run bundle:scan
+      - if: matrix.node == 24
+        run: npm run test:packed-cli
+      - if: matrix.node == 24
+        run: npx playwright install --with-deps chromium
+      - if: matrix.node == 24
+        run: npm run test:e2e

@@ -1,0 +1,207 @@
+"use client";
+
+import {
+  type ClipboardEvent,
+  type Dispatch,
+  type DragEvent,
+  type SetStateAction,
+  useRef,
+  useState,
+} from "react";
+
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
+import type { ResolvedAttachmentOptions } from "@/lib/ticketing/schemas";
+
+export type QueuedAttachment = {
+  id: string;
+  file: File;
+  previewUrl?: string;
+  status: "ready" | "uploading" | "uploaded" | "error";
+  progress: number;
+  uploadId?: string;
+  error?: string;
+};
+
+type AttachmentPickerProps = {
+  value: QueuedAttachment[];
+  onChange: Dispatch<SetStateAction<QueuedAttachment[]>>;
+  options: ResolvedAttachmentOptions;
+  disabled?: boolean;
+  onRetry: (attachment: QueuedAttachment) => void;
+};
+
+function readableBytes(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+export function AttachmentPicker({
+  value,
+  onChange,
+  options,
+  disabled,
+  onRetry,
+}: AttachmentPickerProps) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [message, setMessage] = useState<string>();
+  const maximumBytes = options.maximumFileSizeMb * 1024 * 1024;
+
+  function addFiles(incoming: File[]) {
+    if (disabled || incoming.length === 0) return;
+    setMessage(undefined);
+
+    const available = options.maximumFiles - value.length;
+    if (available <= 0) {
+      setMessage(`You can attach up to ${options.maximumFiles} files.`);
+      return;
+    }
+
+    const accepted: QueuedAttachment[] = [];
+    const errors: string[] = [];
+    for (const file of incoming.slice(0, available)) {
+      if (!options.accept.includes(file.type as never)) {
+        errors.push(`${file.name} has an unsupported file type.`);
+        continue;
+      }
+      if (file.size > maximumBytes) {
+        errors.push(`${file.name} is larger than ${options.maximumFileSizeMb} MB.`);
+        continue;
+      }
+      accepted.push({
+        id: crypto.randomUUID(),
+        file,
+        previewUrl: file.type.startsWith("image/") ? URL.createObjectURL(file) : undefined,
+        status: "ready",
+        progress: 0,
+      });
+    }
+
+    if (incoming.length > available) {
+      errors.push(`Only ${available} more file${available === 1 ? "" : "s"} can be added.`);
+    }
+    if (errors.length > 0) setMessage(errors.join(" "));
+    if (accepted.length > 0) onChange((current) => [...current, ...accepted]);
+  }
+
+  function remove(attachment: QueuedAttachment) {
+    if (attachment.previewUrl) URL.revokeObjectURL(attachment.previewUrl);
+    onChange((current) => current.filter((item) => item.id !== attachment.id));
+  }
+
+  function handleDrop(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    addFiles(Array.from(event.dataTransfer.files));
+  }
+
+  function handlePaste(event: ClipboardEvent<HTMLDivElement>) {
+    const files = Array.from(event.clipboardData.items)
+      .filter((item) => item.kind === "file")
+      .map((item) => item.getAsFile())
+      .filter((file): file is File => Boolean(file));
+    if (files.length > 0) {
+      event.preventDefault();
+      addFiles(files);
+    }
+  }
+
+  if (!options.enabled) return null;
+
+  return (
+    <div className="space-y-3">
+      <div
+        className="rounded-lg border border-dashed p-4 text-center transition-colors focus-within:border-primary"
+        tabIndex={0}
+        aria-label="Attachment drop zone. Paste, drop, or choose files."
+        onDragOver={(event) => event.preventDefault()}
+        onDrop={handleDrop}
+        onPaste={handlePaste}
+      >
+        <p className="text-sm font-medium">Add attachments</p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Drop files, paste an image, or choose up to {options.maximumFiles} files ({options.maximumFileSizeMb} MB each).
+        </p>
+        <input
+          ref={inputRef}
+          className="sr-only"
+          type="file"
+          multiple
+          accept={options.accept.join(",")}
+          disabled={disabled || value.length >= options.maximumFiles}
+          onChange={(event) => {
+            addFiles(Array.from(event.target.files ?? []));
+            event.target.value = "";
+          }}
+        />
+        <Button
+          className="mt-3"
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={disabled || value.length >= options.maximumFiles}
+          onClick={() => inputRef.current?.click()}
+        >
+          Choose files
+        </Button>
+      </div>
+
+      {message ? (
+        <Alert variant="destructive">
+          <AlertDescription>{message}</AlertDescription>
+        </Alert>
+      ) : null}
+
+      {value.length > 0 ? (
+        <ul className="space-y-2" aria-label="Selected attachments">
+          {value.map((attachment) => (
+            <li key={attachment.id} className="flex gap-3 rounded-md border p-3">
+              {attachment.previewUrl ? (
+                <img
+                  src={attachment.previewUrl}
+                  alt=""
+                  className="h-12 w-12 shrink-0 rounded object-cover"
+                />
+              ) : (
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded bg-muted text-[10px] font-medium uppercase">
+                  {attachment.file.name.split(".").pop()?.slice(0, 4) ?? "file"}
+                </div>
+              )}
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium">{attachment.file.name}</p>
+                <p className="text-xs text-muted-foreground">{readableBytes(attachment.file.size)}</p>
+                {attachment.status === "uploading" ? (
+                  <Progress className="mt-2 h-1.5" value={attachment.progress} aria-label={`Uploading ${attachment.file.name}`} />
+                ) : null}
+                {attachment.status === "uploaded" ? (
+                  <p className="mt-1 text-xs text-emerald-600">Uploaded</p>
+                ) : null}
+                {attachment.status === "error" ? (
+                  <p className="mt-1 text-xs text-destructive">{attachment.error ?? "Upload failed"}</p>
+                ) : null}
+              </div>
+              <div className="flex shrink-0 items-start gap-1">
+                {attachment.status === "error" ? (
+                  <Button type="button" size="sm" variant="outline" disabled={disabled} onClick={() => onRetry(attachment)}>
+                    Retry
+                  </Button>
+                ) : null}
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  disabled={disabled || attachment.status === "uploading"}
+                  onClick={() => remove(attachment)}
+                  aria-label={`Remove ${attachment.file.name}`}
+                >
+                  Remove
+                </Button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
