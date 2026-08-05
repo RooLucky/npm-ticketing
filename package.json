@@ -1,6 +1,6 @@
 {
   "name": "quanby-ticketing-workspace",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "private": true,
   "packageManager": "npm@11.13.0",
   "description": "Workspace for the @quanby/ticketing source-generating CLI.",
