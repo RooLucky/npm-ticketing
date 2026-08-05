@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import semver from "semver";
+import { parse as parseYaml } from "yaml";
 import { CliError } from "./errors.js";
 import { parseJsonc } from "./json.js";
 import { detectProject } from "./detect.js";
@@ -174,6 +175,78 @@ function dependencyRange(specifier: string): string | undefined {
   return range || undefined;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+async function findPnpmWorkspace(root: string): Promise<{
+  path: string;
+  configuration: Record<string, unknown>;
+} | undefined> {
+  let current = path.resolve(root);
+  while (true) {
+    const workspacePath = path.join(current, "pnpm-workspace.yaml");
+    const raw = await readOptional(workspacePath);
+    if (raw !== undefined) {
+      let configuration: unknown;
+      try {
+        configuration = parseYaml(raw);
+      } catch (error) {
+        throw new CliError(`Could not parse pnpm workspace configuration: ${workspacePath}`, 1, {
+          cause: error,
+        });
+      }
+      if (!isRecord(configuration)) {
+        throw new CliError(`Invalid pnpm workspace configuration: ${workspacePath}`);
+      }
+      return { path: workspacePath, configuration };
+    }
+
+    const parent = path.dirname(current);
+    if (parent === current) return undefined;
+    current = parent;
+  }
+}
+
+async function resolveDeclaredRange(
+  root: string,
+  name: string,
+  declared: string,
+): Promise<string> {
+  if (!declared.startsWith("catalog:")) return declared;
+
+  const workspace = await findPnpmWorkspace(root);
+  if (!workspace) {
+    throw new CliError(
+      `${name} is declared as ${declared}, but no pnpm-workspace.yaml was found from ${root}.`,
+    );
+  }
+
+  const requestedCatalog = declared.slice("catalog:".length);
+  const catalogName = requestedCatalog || "default";
+  let catalog: unknown;
+  if (catalogName === "default") {
+    catalog = workspace.configuration.catalog;
+  } else {
+    const catalogs = workspace.configuration.catalogs;
+    catalog = isRecord(catalogs) ? catalogs[catalogName] : undefined;
+  }
+
+  if (!isRecord(catalog)) {
+    throw new CliError(
+      `${name} references catalog:${catalogName}, but that catalog is not defined in ${workspace.path}.`,
+    );
+  }
+
+  const resolved = catalog[name];
+  if (typeof resolved !== "string" || !resolved.trim()) {
+    throw new CliError(
+      `${name} is declared as ${declared}, but it has no version in ${workspace.path}.`,
+    );
+  }
+  return resolved.trim();
+}
+
 async function missingDependencies(root: string, requested: string[]): Promise<string[]> {
   if (requested.length === 0) {
     return [];
@@ -182,29 +255,45 @@ async function missingDependencies(root: string, requested: string[]): Promise<s
     dependencies?: Record<string, string>;
     devDependencies?: Record<string, string>;
   }>(await readFile(path.join(root, "package.json"), "utf8"), "package.json");
-  return requested.filter((specifier) => {
+  const missing: string[] = [];
+  for (const specifier of requested) {
     const name = dependencyName(specifier);
     const declared = packageJson.dependencies?.[name] ?? packageJson.devDependencies?.[name];
-    if (!declared) return true;
+    if (!declared) {
+      missing.push(specifier);
+      continue;
+    }
 
     const required = dependencyRange(specifier);
-    if (!required) return false;
-    const declaredRange = semver.validRange(declared);
+    if (!required) continue;
+    const resolvedDeclared = await resolveDeclaredRange(root, name, declared);
+    const describedDeclared =
+      resolvedDeclared === declared ? declared : `${declared} (resolves to ${resolvedDeclared})`;
+    const declaredRange = semver.validRange(resolvedDeclared);
     const requiredRange = semver.validRange(required);
     if (!declaredRange || !requiredRange) {
       throw new CliError(
-        `${name} is declared as ${declared}, which cannot be checked against the required ${required}. ` +
+        `${name} is declared as ${describedDeclared}, which cannot be checked against the required ${required}. ` +
           `Use a compatible semver range and run the installer again.`,
       );
     }
     if (!semver.intersects(declaredRange, requiredRange)) {
       throw new CliError(
-        `${name} ${declared} is incompatible with the generated portal (requires ${required}). ` +
+        `${name} ${describedDeclared} is incompatible with the generated portal (requires ${required}). ` +
           `Upgrade it deliberately, verify your application, and run the installer again.`,
       );
     }
-    return !semver.subset(declaredRange, requiredRange);
-  });
+    if (!semver.subset(declaredRange, requiredRange)) {
+      if (declared.startsWith("catalog:")) {
+        throw new CliError(
+          `${name} ${describedDeclared} does not fully satisfy ${required}. ` +
+            `Update the pnpm catalog deliberately, verify your workspace, and run the installer again.`,
+        );
+      }
+      missing.push(specifier);
+    }
+  }
+  return missing;
 }
 
 export async function buildInstallCommands(
