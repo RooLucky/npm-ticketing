@@ -187,10 +187,11 @@ describe.skipIf(!TEST_DATABASE_URL)("PostgreSQL ticketing integration", () => {
       `SELECT to_regclass('ticketing.tickets')::text AS tickets,
               to_regclass('ticketing.schema_migrations')::text AS migrations`,
     );
-    expect(relations.rows[0]).toEqual({
-      tickets: "ticketing.tickets",
-      migrations: null,
-    });
+    // regclass text is schema-qualified only when the relation is not visible
+    // on search_path. CI uses a PostgreSQL role named `ticketing`, so its
+    // default "$user" search path renders this same relation as `tickets`.
+    expect(relations.rows[0]?.tickets).not.toBeNull();
+    expect(relations.rows[0]?.migrations).toBeNull();
   });
 
   it("isolates tickets and attachments by both client and requester", async () => {
