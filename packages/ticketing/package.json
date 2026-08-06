@@ -1,6 +1,6 @@
 {
   "name": "@quanby/ticketing",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Generate an editable, secure ticketing portal with connected or self-hosted persistence for Next.js App Router applications.",
   "author": "Quanby",
   "keywords": [

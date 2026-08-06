@@ -52,7 +52,7 @@ Self-hosted mode runs only in the consuming Next.js application's Node.js server
 TICKETING_CLIENT_ID=hris-production
 TICKETING_CLIENT_SECRET=replace-with-at-least-32-random-bytes
 
-DATABASE_TICKETING_URL=postgresql://ticketing:password@database.example.com:5432/ticketing?sslmode=verify-full
+DATABASE_TICKETING_URL=postgresql://ticketing:password@database.example.com:5432/ticketing
 # REDIS_TICKETING_URL=rediss://default:password@redis.example.com:6379
 
 AWS_ACCESS_KEY_ID=replace-with-aws-access-key-id
@@ -63,7 +63,7 @@ S3_BUCKET_NAME=private-ticketing-attachments
 
 For AWS S3, no storage endpoint is required; the SDK derives it from `AWS_REGION`. For R2, MinIO, or another S3-compatible provider, set `STORAGE_ENDPOINT` and optionally `STORAGE_FORCE_PATH_STYLE=true`. The equivalent `STORAGE_REGION`, `STORAGE_BUCKET`, `STORAGE_ACCESS_KEY_ID`, and `STORAGE_SECRET_ACCESS_KEY` names are also accepted as explicit overrides.
 
-Remote PostgreSQL connections must use certificate-verified TLS with `sslmode=verify-full`, and remote Redis connections must use `rediss://`. Plain `postgresql://` and `redis://` are accepted only for `localhost`, `127.0.0.1`, or `[::1]` development services.
+Remote PostgreSQL connections automatically use certificate-verified TLS, including provider-issued URLs from Supabase, AWS RDS/Aurora, Neon, and other managed PostgreSQL services that omit `sslmode`. Secure provider parameters (`sslmode=require`, `verify-ca`, or `verify-full`) are accepted; explicitly insecure modes are rejected. Use `sslrootcert` when a provider requires a custom CA. Remote Redis connections must use `rediss://`; plaintext Redis is accepted only for `localhost`, `127.0.0.1`, or `[::1]` development services.
 
 Then apply the package-owned schema to `DATABASE_TICKETING_URL`:
 

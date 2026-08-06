@@ -39,6 +39,8 @@ function isLoopbackHostname(hostname: string): boolean {
   return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
 }
 
+const SECURE_POSTGRES_SSL_MODES = new Set(["require", "verify-ca", "verify-full"]);
+
 export const TicketingDatabaseUrlSchema = z.url().superRefine((value, context) => {
   const url = new URL(value);
   if (url.protocol !== "postgres:" && url.protocol !== "postgresql:") {
@@ -51,14 +53,46 @@ export const TicketingDatabaseUrlSchema = z.url().superRefine((value, context) =
 
   if (isLoopbackHostname(url.hostname)) return;
   const sslModes = url.searchParams.getAll("sslmode");
-  if (sslModes.length !== 1 || sslModes[0] !== "verify-full") {
+  if (sslModes.length > 1) {
     context.addIssue({
       code: "custom",
-      message:
-        "Remote ticketing database URLs must set exactly one sslmode=verify-full parameter",
+      message: "Remote ticketing database URLs may set sslmode at most once",
+    });
+    return;
+  }
+  if (sslModes[0] && !SECURE_POSTGRES_SSL_MODES.has(sslModes[0])) {
+    context.addIssue({
+      code: "custom",
+      message: "Remote ticketing database URLs must not disable TLS",
+    });
+  }
+  const sslValues = url.searchParams.getAll("ssl");
+  if (sslValues.length > 1 || sslValues.some((value) => value.toLowerCase() === "false")) {
+    context.addIssue({
+      code: "custom",
+      message: "Remote ticketing database URLs must not disable TLS",
     });
   }
 });
+
+export function ticketingPostgresConnectionOptions(value: string): {
+  connectionString: string;
+  ssl?: { rejectUnauthorized: true };
+} {
+  assertTicketingDatabaseUrl(value);
+  const url = new URL(value);
+  if (isLoopbackHostname(url.hostname)) return { connectionString: value };
+
+  // Managed providers commonly omit sslmode or emit sslmode=require. Remove
+  // provider-specific switches so node-postgres cannot override the strict TLS
+  // object below. Custom CA parameters such as sslrootcert remain intact.
+  url.searchParams.delete("sslmode");
+  url.searchParams.delete("ssl");
+  return {
+    connectionString: url.toString(),
+    ssl: { rejectUnauthorized: true },
+  };
+}
 
 export const TicketingRedisUrlSchema = z.url().superRefine((value, context) => {
   const url = new URL(value);

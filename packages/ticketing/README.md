@@ -34,7 +34,7 @@ Self-hosted mode instead requires these server-only values:
 ```env
 TICKETING_CLIENT_ID=hris-production
 TICKETING_CLIENT_SECRET=replace-with-at-least-32-random-bytes
-DATABASE_TICKETING_URL=postgresql://ticketing:password@host:5432/ticketing?sslmode=verify-full
+DATABASE_TICKETING_URL=postgresql://ticketing:password@host:5432/ticketing
 # REDIS_TICKETING_URL=rediss://default:password@host:6379
 AWS_ACCESS_KEY_ID=replace-with-aws-access-key-id
 AWS_SECRET_ACCESS_KEY=replace-with-aws-secret-access-key
@@ -58,9 +58,13 @@ STORAGE_FORCE_PATH_STYLE=false
 Put these values in the consuming Next.js application's `.env.local` (or in its
 deployment environment), not in browser code and never with a `NEXT_PUBLIC_` prefix.
 
-Remote PostgreSQL connections must use certificate-verified TLS with
-`sslmode=verify-full`, and remote Redis connections must use `rediss://`. Plain
-database and Redis connections are accepted only for loopback development hosts.
+Remote PostgreSQL connections automatically use certificate-verified TLS,
+including provider-issued URLs from Supabase, AWS RDS/Aurora, Neon, and other
+managed PostgreSQL services that omit `sslmode`. Secure provider parameters
+(`sslmode=require`, `verify-ca`, or `verify-full`) are accepted; explicitly
+insecure modes are rejected. Use `sslrootcert` when a provider requires a custom
+CA. Remote Redis connections must use `rediss://`; plaintext Redis is accepted
+only for loopback development hosts.
 
 After setting the environment, run `pnpm exec ticketing migrate --cwd .`. The explicit migrator owns a dedicated PostgreSQL `ticketing` schema; it never runs during install, build, or a request. PostgreSQL stores ticket data and attachment metadata, while file bytes remain in the private bucket behind short-lived presigned URLs.
 

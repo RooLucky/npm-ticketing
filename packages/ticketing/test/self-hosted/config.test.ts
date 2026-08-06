@@ -7,6 +7,7 @@ import {
   SelfHostedConfigSchema,
   TicketingDatabaseUrlSchema,
   TicketingRedisUrlSchema,
+  ticketingPostgresConnectionOptions,
 } from "../../src/self-hosted/schemas.js";
 
 describe("self-hosted transport configuration", () => {
@@ -19,19 +20,20 @@ describe("self-hosted transport configuration", () => {
     expect(() => assertTicketingDatabaseUrl(value)).not.toThrow();
   });
 
-  it("requires exactly sslmode=verify-full for remote PostgreSQL", () => {
-    expect(
-      TicketingDatabaseUrlSchema.safeParse(
-        "postgresql://ticketing:secret@database.example.test:5432/ticketing?sslmode=verify-full",
-      ).success,
-    ).toBe(true);
+  it("accepts managed PostgreSQL URLs while rejecting explicit insecure TLS modes", () => {
+    for (const suffix of ["", "?sslmode=require", "?sslmode=verify-ca", "?sslmode=verify-full"]) {
+      expect(
+        TicketingDatabaseUrlSchema.safeParse(
+          `postgresql://ticketing:secret@database.example.test:5432/ticketing${suffix}`,
+        ).success,
+      ).toBe(true);
+    }
 
     for (const suffix of [
-      "",
       "?sslmode=disable",
-      "?sslmode=require",
-      "?sslmode=verify-ca",
+      "?sslmode=prefer",
       "?sslmode=verify-full&sslmode=disable",
+      "?ssl=false",
     ]) {
       expect(
         TicketingDatabaseUrlSchema.safeParse(
@@ -39,6 +41,21 @@ describe("self-hosted transport configuration", () => {
         ).success,
       ).toBe(false);
     }
+  });
+
+  it("enforces certificate-verified TLS for provider URLs that omit sslmode", () => {
+    const providerUrl =
+      "postgresql://postgres.project:secret@aws-1-ap-northeast-2.pooler.supabase.com:6543/postgres";
+    expect(ticketingPostgresConnectionOptions(providerUrl)).toEqual({
+      connectionString: providerUrl,
+      ssl: { rejectUnauthorized: true },
+    });
+
+    const withProviderMode = `${providerUrl}?sslmode=require`;
+    expect(ticketingPostgresConnectionOptions(withProviderMode)).toEqual({
+      connectionString: providerUrl,
+      ssl: { rejectUnauthorized: true },
+    });
   });
 
   it.each([
@@ -77,8 +94,7 @@ describe("self-hosted transport configuration", () => {
     expect(
       SelfHostedConfigSchema.safeParse({
         ...authentication,
-        databaseUrl:
-          "postgresql://ticketing:secret@database.example.test:5432/ticketing?sslmode=verify-full",
+        databaseUrl: "postgresql://ticketing:secret@database.example.test:5432/ticketing",
         redisUrl: "rediss://cache.example.test:6379",
         storage,
       }).success,
@@ -86,7 +102,8 @@ describe("self-hosted transport configuration", () => {
     expect(
       SelfHostedConfigSchema.safeParse({
         ...authentication,
-        databaseUrl: "postgresql://ticketing:secret@database.example.test:5432/ticketing",
+        databaseUrl:
+          "postgresql://ticketing:secret@database.example.test:5432/ticketing?sslmode=disable",
         redisUrl: "redis://cache.example.test:6379",
         storage,
       }).success,

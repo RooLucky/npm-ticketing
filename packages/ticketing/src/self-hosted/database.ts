@@ -6,7 +6,7 @@ import {
   TICKETING_DATABASE_TIMEOUTS,
   validateAppliedTicketingMigrations,
 } from "./migrations.js";
-import { assertTicketingDatabaseUrl } from "./schemas.js";
+import { ticketingPostgresConnectionOptions } from "./schemas.js";
 import type {
   CreateReplyInput,
   CreateTicketInput,
@@ -83,12 +83,12 @@ function poolKey(databaseUrl: string): string {
 }
 
 export function poolForTicketingDatabase(databaseUrl: string): Pool {
-  assertTicketingDatabaseUrl(databaseUrl);
+  const connection = ticketingPostgresConnectionOptions(databaseUrl);
   const key = poolKey(databaseUrl);
   const existing = pools.get(key);
   if (existing) return existing;
   const pool = new Pool({
-    connectionString: databaseUrl,
+    ...connection,
     max: 5,
     connectionTimeoutMillis: 10_000,
     idleTimeoutMillis: 30_000,

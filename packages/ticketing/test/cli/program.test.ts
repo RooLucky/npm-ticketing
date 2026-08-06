@@ -69,18 +69,18 @@ describe("createProgram", () => {
     );
   });
 
-  it("rejects a remote plaintext database URL before running migrations", async () => {
+  it("rejects a remote database URL that explicitly disables TLS before migrations", async () => {
     const project = await mkdtemp(path.join(os.tmpdir(), "ticketing-program-project-"));
     const templates = await mkdtemp(path.join(os.tmpdir(), "ticketing-program-templates-"));
     temporaryDirectories.push(project, templates);
     await writeText(
       project,
       ".env.local",
-      "DATABASE_TICKETING_URL=postgresql://ticketing:password@database.example.com/ticketing\n",
+      "DATABASE_TICKETING_URL=postgresql://ticketing:password@database.example.com/ticketing?sslmode=disable\n",
     );
     const dependencies: InstallerDependencies = {
       templatesDirectory: templates,
-      packageVersion: "0.2.0",
+      packageVersion: "0.2.1",
       runner: new RecordingRunner(),
       logger: new RecordingLogger(),
       confirm: async () => false,
@@ -94,6 +94,6 @@ describe("createProgram", () => {
         "--cwd",
         project,
       ]),
-    ).rejects.toThrow("sslmode=verify-full");
+    ).rejects.toThrow("must not disable TLS");
   });
 });

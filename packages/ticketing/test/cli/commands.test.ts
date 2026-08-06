@@ -81,10 +81,10 @@ describe("buildInstallCommands", () => {
   });
 
   it.each([
-    ["npm", ["install", "--save-exact", "@quanby/ticketing@0.2.0"]],
-    ["pnpm", ["add", "--save-exact", "@quanby/ticketing@0.2.0"]],
-    ["yarn", ["add", "--exact", "@quanby/ticketing@0.2.0"]],
-    ["bun", ["add", "--exact", "@quanby/ticketing@0.2.0"]],
+    ["npm", ["install", "--save-exact", "@quanby/ticketing@0.2.1"]],
+    ["pnpm", ["add", "--save-exact", "@quanby/ticketing@0.2.1"]],
+    ["yarn", ["add", "--exact", "@quanby/ticketing@0.2.1"]],
+    ["bun", ["add", "--exact", "@quanby/ticketing@0.2.1"]],
   ] as const)(
     "installs and upgrades the package-owned runtime exactly with %s",
     async (manager, expectedArgs) => {
@@ -98,7 +98,7 @@ describe("buildInstallCommands", () => {
 
       const commands = await buildInstallCommands(
         await detectProject(root),
-        ["@quanby/ticketing@0.2.0"],
+        ["@quanby/ticketing@0.2.1"],
         [],
         true,
       );

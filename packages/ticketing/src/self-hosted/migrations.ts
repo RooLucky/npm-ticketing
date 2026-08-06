@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { Pool, type PoolClient } from "pg";
 
 import { SelfHostedTicketingError } from "./errors.js";
-import { assertTicketingDatabaseUrl } from "./schemas.js";
+import { ticketingPostgresConnectionOptions } from "./schemas.js";
 
 export const TICKETING_SCHEMA_VERSION = 1;
 
@@ -242,9 +242,9 @@ export async function migrateTicketingDatabase(
   input: MigrateTicketingDatabaseInput,
 ): Promise<{ version: number }> {
   assertMigrationDefinitions();
-  assertTicketingDatabaseUrl(input.databaseUrl);
+  const connection = ticketingPostgresConnectionOptions(input.databaseUrl);
   const pool = new Pool({
-    connectionString: input.databaseUrl,
+    ...connection,
     max: 1,
     connectionTimeoutMillis: 10_000,
     idleTimeoutMillis: 10_000,
