@@ -51,7 +51,7 @@ test("creates a ticket with an attachment, downloads it, and replies", async ({
   await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();
   await page.unroute("**/mock/uploads/**");
   await page.getByRole("button", { name: "Retry" }).click();
-  await expect(page.getByText("Uploaded")).toBeVisible();
+  await expect(page.getByText("Uploaded", { exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "Submit ticket" }).click();
   await expect(page.getByText("Playwright attachment flow", { exact: true })).toBeVisible();
