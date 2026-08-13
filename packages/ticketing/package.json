@@ -57,7 +57,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1103.0",
     "@aws-sdk/s3-request-presigner": "^3.1103.0",
-    "commander": "^14.0.0",
+    "commander": "^15.0.0",
     "dotenv": "^17.4.2",
     "execa": "^9.6.0",
     "jose": "^6.2.8",
